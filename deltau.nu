@@ -1,13 +1,13 @@
-# Find the system theme (if on WSL) or leave it to delta to auto-detect
+# Find the system theme (if on Windows/WSL) or leave it to delta to auto-detect
 export def theme-flags [] {
-  if (which powershell.exe | length) > 0 {
-    if (( ^powershell.exe -noprofile -nologo -noninteractive
-          '$a = Get-ItemProperty -Path HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize; $a.AppsUseLightTheme'
-        ) == "1") {
+  if (which reg.exe | length) > 0 {
+    let val = ^reg.exe QUERY 'HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' /v SystemUsesLightTheme |
+      lines | slice (-2..-2) | split row " " | last
+    if $val == "0x1" {
       ["--light"]
     } else {
       ["--dark"]
-    } 
+    }
   } else {
     ["--detect-dark-light" "auto"]
   }
@@ -22,4 +22,8 @@ export def layout-flags [] {
       } else {[]}
     )
   ]
+}
+
+export def --wrapped wrapper [...args] {
+  ^delta ...(theme-flags) ...(layout-flags) ...$args
 }

@@ -113,11 +113,9 @@ export def adv [
 
 # Shows the delta diff everytime a folder changes
 export def watch-diff [folder] {
-  let theme = deltau theme-flags
-  # delta theme-flags are resolved once because on WSL they can take some time to retrieve
   watch $folder {
     clear
-    ^jj diff --git | ^delta ...(deltau layout-flags) ...$theme
+    ^jj diff --git | deltau wrapper
   }
 }
 
@@ -228,7 +226,7 @@ export def --wrapped log [
       --ansi --layout reverse --style default --no-sort --track
       --highlight-line
       --preview-window hidden,right,70%,wrap
-      --preview $"nu ($print_diff_script) diff {} (deltau theme-flags | str join ' ')"
+      --preview $"nu ($print_diff_script) diff {}"
       ...(if ($watcher_data.fzf_port? != null) {[--listen $watcher_data.fzf_port]}
           else {[]})
       --delimiter (char us) --with-nth "1,3"
@@ -257,7 +255,7 @@ export def --wrapped log [
 # Wraps jj diff in delta
 export def --wrapped diff [...args] {
   ^jj diff --git ...$args |
-  ^delta ...(deltau layout-flags) ...(deltau theme-flags)
+  deltau wrapper
 }
 
 # See 'nujj log --help'

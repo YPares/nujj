@@ -22,7 +22,7 @@ def with-match [line cls] {
   }
 }
 
-def --wrapped "main diff" [line ...args] {
+def "main diff" [line] {
   let width = tput cols | into int
 
   with-match $line {|commit_id file|
@@ -45,7 +45,7 @@ def --wrapped "main diff" [line ...args] {
     print ""
     ( jj diff -r $commit_id --color always --git
         ...(if $file != null {[$file]} else {[]})
-    ) | ^delta ...(deltau layout-flags) --paging never ...$args 
+    ) | deltau wrapper --paging never 
   }
 }
 
