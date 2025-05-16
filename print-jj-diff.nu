@@ -27,34 +27,38 @@ def "main diff" [line] {
 
   with-match $line {|commit_id file|
     print (
-      ( jj log -r $commit_id --no-graph --color always
+      ( ^jj log -r $commit_id --no-graph --color always
           -T "description ++
               change_id.shortest(8) ++ ' (' ++ commit_id.shortest(8) ++ '); ' ++
               author ++ '; ' ++ author.timestamp() ++ '\n' ++
               diff.files().len() ++ ' file(s) modified'"
+          --ignore-working-copy
       ) | lines | each {$">> ($in)"} | str join "\n"
     )
     let bookmarks = (
-      jj log -r $"($commit_id):: & \(bookmarks\() | remote_bookmarks\())"
-      --no-graph -T 'bookmarks ++ " "' --color always
+      ^jj log -r $"($commit_id):: & \(bookmarks\() | remote_bookmarks\())"
+        --no-graph -T 'bookmarks ++ " "' --color always
+        --ignore-working-copy
     ) | complete
     let bookmarks = $bookmarks.stdout | str trim
     if not ($bookmarks | is-empty) {
       print $">> In ($bookmarks)"
     }
     print ""
-    ( jj diff -r $commit_id --color always --git
+    ( ^jj diff -r $commit_id --color always --git
         ...(if $file != null {[$file]} else {[]})
+        --ignore-working-copy
     ) | deltau wrapper --paging never 
   }
 }
 
 def "main show-files" [line] {
   with-match $line {|commit_id|
-    ( jj log -r $commit_id --no-graph
-      -T $"self.diff\().files\().map\(|x|
-            '(char us)' ++ commit_id.shortest\() ++ '(char us)(char fs)' ++ x.path\() ++ '(char fs)'
-          ).join\('(char gs)')"
+    ( ^jj log -r $commit_id --no-graph
+        -T $"self.diff\().files\().map\(|x|
+              '(char us)' ++ commit_id.shortest\() ++ '(char us)(char fs)' ++ x.path\() ++ '(char fs)'
+            ).join\('(char gs)')"
+        --ignore-working-copy
     ) | tr (char gs) '\0'
   }
 }

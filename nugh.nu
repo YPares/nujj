@@ -17,13 +17,15 @@ def defaults [...vals] {
 
 # Get a table of the PRs
 export def --wrapped prs [...args] {
-  gh pr ls ...$args --json "number,title,url,headRefName,baseRefName,author,isDraft,statusCheckRollup" |
+  ^gh pr ls ...$args --json "number,title,url,headRefName,baseRefName,author,isDraft,statusCheckRollup" |
   from json |
   update author {get login} |
-  update statusCheckRollup {each {|stat|
-    let concl = mklink ($stat.conclusion | defaults $stat.status "(unknown)") $stat.detailsUrl
-    {key: $stat.workflowName, val: $concl}
-  } | transpose -rd} |
+  update statusCheckRollup {
+    each {|stat|
+      let concl = mklink ($stat.conclusion | defaults $stat.status "(unknown)") $stat.detailsUrl
+      {key: $stat.workflowName, val: $concl}
+    } | transpose -rd
+  } |
   update title {|pr|
     let draft = if $pr.isDraft {"Draft: "} else {""}
     mklink $"($draft)($pr.title)" $pr.url

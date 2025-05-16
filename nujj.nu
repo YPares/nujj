@@ -17,7 +17,7 @@ export def --wrapped reparent [
   let added = $parents | parse "+{rev}" | get rev
   let removed = $parents | parse "-{rev}" | get rev
  
-  ( jj rebase -s $revision
+  ( ^jj rebase -s $revision
        -d $"all:\(($revision)- | ($added | list-to-revset)) & ~($removed | list-to-revset)"
   )
 }
@@ -28,14 +28,14 @@ export def back [
 ] {
   clear
   let op = (
-    jj op log --no-graph -T 'id.short() ++ "\n" ++ description ++ "\n" ++ tags ++ "\n"' -n $num_ops |
+    ^jj op log --no-graph -T 'id.short() ++ "\n" ++ description ++ "\n" ++ tags ++ "\n"' -n $num_ops |
     lines | chunks 3 |
     each {|chunk|
       {id: $chunk.0, desc: $"* ($chunk.1) (ansi purple)\n      [($chunk.2)](ansi reset)"}
     } |
     input list -f -d desc
   )
-  jj op restore $op.id
+  ^jj op restore $op.id
 }
 
 # Split a revision according to one of its past states (identified by a commit_id).
@@ -47,9 +47,9 @@ export def restore-at [
   --no-split (-S) # Drop every change that came after restoration_point instead of splitting
 ] {
   if not $no_split {
-    jj new --no-edit -A $revision
+    ^jj new --no-edit -A $revision
   }
-  jj restore --from $restoration_point --to $revision (if not $no_split { --restore-descendants } else {""})
+  ^jj restore --from $restoration_point --to $revision (if not $no_split { --restore-descendants } else {""})
 }
 
 def to-group-name [] {
@@ -69,7 +69,7 @@ export def tblog [
     }
   let parser = $columns | each { $"{($in | to-group-name)}" } | str join (char fs)
 
-  ( jj log ...(if $revset != null {[-r $revset]} else {[]})
+  ( ^jj log ...(if $revset != null {[-r $revset]} else {[]})
        --no-graph
        -T $"($columns | str join $"++'(char fs)'++") ++ '(char rs)'"
   ) |
@@ -93,8 +93,8 @@ export def bookmarks-to-table [
 export def ci [
   --message (-m): string
 ] {
-  jj commit ...(if $message != null {[-m $message]} else {[]})
-  jj bookmark move --from @- --to @
+  ^jj commit ...(if $message != null {[-m $message]} else {[]})
+  ^jj bookmark move --from @- --to @
 }
 
 # Open a picker to select a bookmark and advance it to its children
@@ -108,7 +108,7 @@ export def adv [
     tblog -r $"($revset) & bookmarks\()" "local_bookmarks.map(|x| x.name())" |
     rename index b | get b | each {split row " "} | flatten | input list
   }
-  jj bookmark move $bookmark --to $"($bookmark)+"
+  ^jj bookmark move $bookmark --to $"($bookmark)+"
 }
 
 # Shows the delta diff everytime a folder changes
@@ -157,7 +157,7 @@ export def --wrapped log [
 
   # We retrieve the user template:
   let template = if ($template == null) {
-    jj config get templates.log
+    ^jj config get templates.log
   } else {
     $template
   }
@@ -187,7 +187,7 @@ export def --wrapped log [
   # We generate the command that calls jj and write it to a temp file
   # (because we will need to call it again in case of refreshes):
   let width = tput cols | into int | $in / 2 | into int
-  [ jj ...$args --color always -T $template --config $"desc-len=($width)" "|"
+  [ ^jj ...$args --color always -T $template --ignore-working-copy --config $"desc-len=($width)" "|"
         # in case the template uses a 'desc-len' config value
     str replace $"'(char gs)\n'" $"'(char gs)'" -a "|"
     tr (char gs) "\\0" # We use tr because nushell's str replace deals badly with NULL
@@ -200,35 +200,38 @@ export def --wrapped log [
   } |
   str join " " | save $jj_cmd_file
 
-  # If --watch was given, we start the watcher as a background process:
-  let watcher_data = if ($watch != null) {
+  let fzf_port = port
+
+  let jj_watcher_id = job spawn {
+    watch $"(^jj root)/.jj" -q {
+      ( http post $"http://localhost:($fzf_port)"
+          $"reload\(nu ($jj_cmd_file))"
+      )      
+    }
+  }
+
+  let extra_watcher_id = if ($watch != null) {
     if not ($watch | path exists) {
+      job kill $jj_watcher_id
+      rm -rf $tmp_dir
       error make {msg: $"Path ($watch) does not exist"}
     }
-  
-    let fzf_port = port
-    let job_id = job spawn {
+    job spawn {
       watch $watch -q {
-        ( http post $"http://localhost:($fzf_port)"
-            $"reload\(nu ($jj_cmd_file))"
-        )
+        ^jj debug snapshot
       }
     }
-    {fzf_port: $fzf_port, job_id: $job_id}
-  } else {
-    {}
   }
 
   try {
-    nu $jj_cmd_file |
-    ( fzf
+    ^nu $jj_cmd_file |
+    ( ^fzf
       --read0
       --ansi --layout reverse --style default --no-sort --track
       --highlight-line
       --preview-window hidden,right,70%,wrap
       --preview $"nu ($print_diff_script) diff {}"
-      ...(if ($watcher_data.fzf_port? != null) {[--listen $watcher_data.fzf_port]}
-          else {[]})
+      --listen $fzf_port
       --delimiter (char us) --with-nth "1,3"
       --bind "ctrl-r:change-preview-window(bottom,90%|right,70%)+toggle-preview+toggle-preview"
           # the double toggle is to force preview's refresh
@@ -245,9 +248,11 @@ export def --wrapped log [
     )
   }
 
-  if ($watcher_data.job_id? != null) {
-    job kill $watcher_data.job_id
+  if ($extra_watcher_id != null) {
+    job kill $extra_watcher_id
   }
+
+  job kill $jj_watcher_id
 
   rm -rf $tmp_dir
 }
