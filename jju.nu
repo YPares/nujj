@@ -106,17 +106,6 @@ export def adv [
   jj bookmark move $bookmark --to $"($bookmark)+"
 }
 
-def cat-args [] {
-  each {|arg|
-    if ($arg | str contains " ") {
-      $"'($arg)'"
-    } else {
-      $arg      
-    }
-  } |
-  str join ' '
-}
-
 # Shows the delta diff everytime a folder changes
 export def watch-diff [folder] {
   let theme = deltau theme-flags-from-system
@@ -130,19 +119,55 @@ const explore_script = [(path self | path dirname) "cat-jj-diff.nu"] | path join
 
 # Uses fzf to show the jj log and to allow to drill into revisions
 export def --wrapped tui [
+  --template (-T): string # which JJ template to use (if any)
   --watch (-w): path # Watch the given path and refresh fzf whenever it changes
   ...args # Extra JJ args
 ] {
-  let template = $"'(char us)' ++ stringify\(commit_id.shortest\()) ++ '(char us)' ++ (jj config get templates.log)"
+  let template = if ($template == null) {
+    jj config get templates.log
+  } else {
+    $template
+  }
 
-  let quoted_template = $'"($template)"'
-  let reload_cmd = $"reload\(jj ($args | cat-args) --color always -T ($quoted_template))"
+  let template = [
+    $"'(char us)'"
+    "stringify(commit_id.shortest())"
+    $"'(char us)'"
+    $template
+    $"'(char gs)'"
+  ] | str join " ++ "
+
+  let tmp_dir = mktemp --directory
+  let pos_file = [$tmp_dir pos.txt] | path join
+  let jj_cmd_file = [$tmp_dir jj_cmd.nu] | path join
+
+  "pos(0)" | save -f $pos_file
+  
+  let width = tput cols | into int | $in / 2 | into int
+  [ jj ...$args --color always -T $template --config $"desc-len=($width)" "|"
+        # in case the template uses the 'desc-len' config value
+    str replace $"'(char gs)\n'" $"'(char gs)'" -a "|"
+    tr (char gs) "\\0"
+  ] | each {|x|
+    if ($x | str contains " ") {
+      $"\"($x)\""
+    } else {
+      $x
+    }
+  } |
+  str join " " | save $jj_cmd_file
 
   let watcher_data = if ($watch != null) {
+    if not ($watch | path exists) {
+      error make {msg: $"Path ($watch) does not exist"}
+    }
+  
     let fzf_port = port
     let job_id = job spawn {
       watch $watch -q {
-        http post $"http://localhost:($fzf_port)" $reload_cmd
+        ( http post $"http://localhost:($fzf_port)"
+            $"reload\(nu ($jj_cmd_file))"
+        )
       }
     }
     {fzf_port: $fzf_port, job_id: $job_id}
@@ -150,20 +175,19 @@ export def --wrapped tui [
     {}
   }
 
-  let statedir = mktemp -d
-  let posfile = [$statedir pos.txt] | path join
-  "pos(0)" | save -f $posfile
-
   try {
-    jj ...$args --color always -T $template |
+    nu $jj_cmd_file |
     ( fzf
-      --ansi --layout reverse --style default --no-clear --no-sort --track
+      --read0
+      --ansi --layout reverse --style default --no-sort --track
+      --highlight-line
       --preview-window hidden,right,70%,wrap
       --preview $"nu ($explore_script) diff {} (deltau theme-flags-from-system)"
       ...(if ($watcher_data.fzf_port? != null) {[--listen $watcher_data.fzf_port]}
           else {[]})
       --delimiter (char us) --with-nth "1,3"
-      --bind "ctrl-r:change-preview-window(bottom,90%|right,70%)+toggle-preview+toggle-preview" # force preview layout refreshing
+      --bind "ctrl-r:change-preview-window(bottom,90%|right,70%)+toggle-preview+toggle-preview"
+          # double toggle: force preview layout refreshing
       --bind "enter:toggle-preview"
       --bind "ctrl-d:preview-half-page-down"
       --bind "ctrl-u:preview-half-page-up"
@@ -171,15 +195,17 @@ export def --wrapped tui [
       --bind "page-down:preview-page-down"
       --bind "page-up:preview-page-up"
       --bind "esc:cancel"
-      --bind $"left:rebind\(right)+($reload_cmd)+clear-query"
-      --bind $"load:transform\(cat ($posfile))"
-      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($posfile))+reload\(nu ($explore_script) show-files {})+clear-query"
+      --bind $"left:rebind\(right)+reload\(nu ($jj_cmd_file))+clear-query"
+      --bind $"load:transform\(cat ($pos_file))"
+      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($pos_file))+reload\(nu ($explore_script) show-files {})+clear-query"
     )
   }
 
   if ($watcher_data.job_id? != null) {
     job kill $watcher_data.job_id
   }
+
+  rm -rf $tmp_dir
 }
 
 # Wraps jj log in delta
@@ -192,4 +218,12 @@ export def --wrapped log [...args] {
 export def --wrapped diff [...args] {
   ^jj diff --git ...$args |
   deltau auto-layout (deltau theme-flags-from-system)
+}
+
+export def --wrapped main [
+  --template (-T): string
+  --watch (-w): path
+  ...args
+] {
+  tui --template $template --watch $watch ...$args
 }

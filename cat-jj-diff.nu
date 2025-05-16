@@ -52,9 +52,9 @@ def --wrapped "main diff" [line ...args] {
 def "main show-files" [line] {
   with-match $line {|commit_id|
     ( jj log -r $commit_id --no-graph
-        -T $"self.diff\().files\().map\(|x|
-              '(char us)' ++ commit_id.shortest\() ++ '(char us)(char fs)' ++ x.path\() ++ '(char fs)'
-            ).join\('\n')"
-    )
+      -T $"self.diff\().files\().map\(|x|
+            '(char us)' ++ commit_id.shortest\() ++ '(char us)(char fs)' ++ x.path\() ++ '(char fs)'
+          ).join\('(char gs)')"
+    ) | tr (char gs) '\0'
   }
 }
