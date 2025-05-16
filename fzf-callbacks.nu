@@ -31,7 +31,7 @@ def print-log [width: int, state: record] {
 
 def print-files [state: record, matches: record] {
   if ($matches | is-empty) {
-    print $"--Nothing here--(char nul)"
+    print $"(ansi default_italic)\(Nothing here)(ansi reset)(char nul)"
   } else {
     let jj_out = (
       ^jj log -r $matches.change_id --no-graph
@@ -43,7 +43,7 @@ def print-files [state: record, matches: record] {
         --at-operation $state.selected_operation
     ) | tr (char gs) \0 | complete
     if ($jj_out.stdout | is-empty) {
-      print $"--Nothing here--(char nul)"
+      print $"(ansi default_italic)\(Nothing here)(ansi reset)(char nul)"
     } else {
       print $jj_out.stdout
     }
@@ -92,13 +92,10 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
 
   let width = $env.FZF_PREVIEW_COLUMNS? | default "80" | into int
 
-  if ($state.current_view == log) {
-    $state | update pos_in_rev_log (fzf-pos) | save -f $state_file
-  }
   let matches = $contents | str join " " | get-matches
 
   if ($matches | is-empty) {
-    print "--Nothing to show--"
+    print $"(ansi default_italic)\(Nothing to show)(ansi reset)"
   } else {
     let bookmarks = (
       ^jj log -r $"($matches.change_id):: & \(bookmarks\() | remote_bookmarks\())"

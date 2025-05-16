@@ -30,9 +30,10 @@ def --wrapped cmd [
 # upon changes to a local folder with --watch.
 #
 # Key bindings:
-# - Return: open/close the preview panel
+# - Return: open/close the preview panel (showing the diff of a revision)
 # - Right & left arrows: go into/out of a revision (to preview only specific files)
-# - Ctrl+r: switch between preview panel right & bottom positions
+# - Ctrl+r: place the preview on the right (repeat to change preview window size)
+# - Ctrl+b: put the preview on the bottom (repeat to change preview window size)
 # - PageUp & PageDown: scroll through the preview panel (full page)
 # - Ctrl+d & Ctrl+u: scroll through the preview panel (half page)
 # 
@@ -152,7 +153,7 @@ export def --wrapped main [
       --prompt "filter:" --color "prompt:grey"
       --info-command $'echo "($revisions) - $FZF_INFO"' --info inline-right
 
-      --preview-window "right,70%,hidden,wrap"
+      --preview-window "right,50%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
 
       ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
@@ -169,13 +170,19 @@ export def --wrapped main [
         ]
         load: (cmd -c transform on-load-finished $state_file)
         ctrl-r: [
-          "change-preview-window(bottom,90%|right,70%)"
-          toggle-header
-          toggle-input
+          "change-preview-window(right,80%|right,50%)"
+          show-header
+          show-input
+          refresh-preview
+        ]
+        ctrl-b: [
+          "change-preview-window(bottom,50%|bottom,90%)"
+          hide-header
+          hide-input
           refresh-preview
         ]
 
-        enter:           toggle-preview
+        enter:           [toggle-preview, show-header, show-input]
         page-down:       preview-page-down
         page-up:         preview-page-up
         ctrl-d:          preview-half-page-down
