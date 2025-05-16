@@ -15,6 +15,10 @@ def --wrapped cmd [
   $"($fzf_command)\(nu -n ($fzf_callbacks) ($args | str join ' '))"
 }
 
+def lcond [bool list] {
+  if $bool {$list} else {[]}
+}
+
 # # JJiles. A JJ Watcher.
 #
 # Shows an interactive and auto-updating jj log that allows you to drill down into revisions.
@@ -32,7 +36,7 @@ def --wrapped cmd [
 # 
 # - Right & left arrows: go into/out of a revision (to preview only specific files)
 # - Return: open/close the preview panel (showing the diff of a revision)
-# - Ctrl+f or F3: begin a fuzzy search on the log / exit search
+# - Ctrl+f or F3: toggle the search field on/off
 # - Ctrl+r: place the preview on the right (repeat to change preview window size)
 # - Ctrl+b: put the preview on the bottom (repeat to change preview window size)
 # - PageUp & PageDown: scroll through the preview panel (full page)
@@ -55,6 +59,7 @@ export def --wrapped main [
     # An operation (from 'jj op log') at which to browse your repo.
     # Will deactivate the .jj folder watching if given.
   --watch (-w): path # The folder to watch for changes. Cannot be used with --freeze-at-op
+  --hide-search (-S) # The fuzzy finder is hidden by default
   ...args # Extra jj args
 ] {
   if $help {
@@ -102,7 +107,7 @@ export def --wrapped main [
   let state_file = [$tmp_dir state.nuon] | path join
 
   {
-    revisions: $revisions
+    revset: $revisions
     log_template: $template
     jj_log_extra_args: $args
     current_view: log
@@ -155,29 +160,32 @@ export def --wrapped main [
       --read0
       --delimiter (char us) --with-nth "1,3"
       --layout reverse --no-sort --track
-      --no-input
+      ...(lcond $hide_search [--no-input])
 
       --style minimal
       --ansi --color $color
       --highlight-line
-      --header-first --header-border block
-      --prompt "Search: "
+      --header-border block --header-first
+      --input-border bottom
+      --prompt "Filter: " --ghost "(Ctrl+f to hide)"
       --info-command $'echo "($revisions) - $FZF_INFO"' --info inline-right
 
       --preview-window "right,50%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
 
-      ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
+      ...(lcond ($jj_watcher_id != null) [--listen $fzf_port])
 
       ...(to-fzf-bindings {
 
         left: [
           (cmd update-list back $state_file "{}")
           clear-query
+          ...(lcond $hide_search [hide-input])
         ]
         right: [
           (cmd update-list into $state_file "{}")
           clear-query
+          ...(lcond $hide_search [hide-input])
         ]
         load: (cmd -c transform on-load-finished $state_file)
         ctrl-r: [

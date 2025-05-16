@@ -18,7 +18,7 @@ def get-matches [
 
 def print-log [width: int, state: record] {
   ( ^jj ...$state.jj_log_extra_args
-      --revisions $state.revisions
+      --revisions $state.revset
       --color always
       --template $state.log_template
       --config $"width=($width)"
