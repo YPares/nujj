@@ -1,3 +1,5 @@
+# delta utils
+
 # Find the system theme (if on Windows/WSL) or leave it to delta to auto-detect
 export def theme-flags [] {
   if (which reg.exe | length) > 0 {
@@ -13,7 +15,7 @@ export def theme-flags [] {
   }
 }
 
-# Get the layout flags for delta with tput
+# Get the layout flags for delta
 export def layout-flags [] {
   let width = $env.FZF_PREVIEW_COLUMNS? |
     default $env.FZF_COLUMNS? |
@@ -27,6 +29,7 @@ export def layout-flags [] {
   ]
 }
 
+# Run delta with theme and layout detection
 export def --wrapped wrapper [...args] {
   ^delta ...(theme-flags) ...(layout-flags) ...$args
 }
