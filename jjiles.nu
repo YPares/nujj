@@ -122,7 +122,7 @@ export def --wrapped main [
   let jj_watcher_id = if ($freeze_at_op == null) {
     job spawn {
       watch $"(^jj root)/.jj" -q {
-        ( cmd update-list refresh $state_file "{}" |
+        ( cmd update-list refresh $state_file "{n}" "{}" |
             http post $"http://localhost:($fzf_port)"
         )
       }
@@ -180,12 +180,12 @@ export def --wrapped main [
       ...(to-fzf-bindings {
 
         left: [
-          (cmd update-list back $state_file "{}")
+          (cmd update-list back $state_file "{n}" "{}")
           clear-query
           ...(lcond $hide_search [hide-input])
         ]
         right: [
-          (cmd update-list into $state_file "{}")
+          (cmd update-list into $state_file "{n}" "{}")
           clear-query
           ...(lcond $hide_search [hide-input])
         ]

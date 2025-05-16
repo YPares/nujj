@@ -51,13 +51,10 @@ def print-files [state: record, matches: record] {
   }
 }
 
-def fzf-pos [] {
-  $env.FZF_POS? | default 0 | into int
-}
-
 def --wrapped "main update-list" [
   transition: string
   state_file: path
+  fzf_pos: int = 0
   ...contents: string
 ] {
   mut state = open $state_file
@@ -67,7 +64,7 @@ def --wrapped "main update-list" [
   match [$state.current_view $transition] {
     [log into] => {
       $state = $state | merge {
-        pos_in_rev_log:     (fzf-pos)
+        pos_in_rev_log:     ($fzf_pos + 1)
         current_view:       files
         selected_change_id: $matches.change_id?
       }
