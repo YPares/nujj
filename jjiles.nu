@@ -162,9 +162,8 @@ export def --wrapped main [
           "change-preview-window(bottom,90%|right,70%)"
           toggle-header
           toggle-input
-          toggle-preview
-          toggle-preview
-        ] # the double toggle is to force preview's refresh
+          refresh-preview
+        ]
 
         enter:           toggle-preview
         page-down:       preview-page-down

@@ -175,7 +175,7 @@ def "main on-load-finished" [state_file: path] {
       [$"(ansi $"($current.color)_reverse")($current.menu)(ansi reset)"]
     } else {[]})
     ...($after | each {|x|
-      $"(ansi attr_dimmed)(ansi $"($x.color)")($x.menu)(ansi reset)"
+      $"(ansi attr_dimmed)(ansi $x.color)($x.menu)(ansi reset)"
     })
   ] | str join " > "
 
