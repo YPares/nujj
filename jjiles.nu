@@ -136,12 +136,13 @@ export def --wrapped main [
       --delimiter (char us) --with-nth "1,3"
       --layout reverse --no-sort --track
 
-      --ansi --color $color --style default
-      --border none --info right
+      --ansi --color $color
+      --style minimal
+      --info right
       --header-border block --header-first
       --highlight-line
 
-      --preview-window "right,border-left,70%,hidden"
+      --preview-window "right,70%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
 
       ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
@@ -158,7 +159,7 @@ export def --wrapped main [
         ]
         load: (cmd -c transform on-load-finished $state_file)
         ctrl-r: [
-          "change-preview-window(bottom,border-top,90%|right,border-left,70%)"
+          "change-preview-window(bottom,90%|right,70%)"
           toggle-header
           toggle-input
           toggle-preview

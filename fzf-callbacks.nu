@@ -88,40 +88,58 @@ def --wrapped "main update-list" [
 
 def --wrapped "main preview" [state_file: path, ...contents: string] {
   let state = open $state_file
+
+  let width = $env.FZF_PREVIEW_COLUMNS? | default "80" | into int
+
   if ($state.current_view == log) {
     $state | update pos_in_log (fzf-pos) | save -f $state_file
   }
-
   let matches = $contents | str join " " | get-matches
 
   if ($matches | is-empty) {
     print "--Nothing to show--"
   } else {
-    if ($state.operation != "@") {
-      print $">> (ansi yellow)At operation: ($state.operation)(ansi reset)"
-    }
-    print (
-      ( ^jj log -r $matches.change_id --no-graph --color always
-          -T "description ++
-              change_id.shortest(8) ++ ' (' ++ commit_id.shortest(8) ++ '); ' ++
-              author ++ '; ' ++ author.timestamp() ++ '\n' ++
-              diff.files().len() ++ ' file(s) modified'"
-          --ignore-working-copy
-          --at-operation $state.operation
-      ) | lines | each {$">> ($in)"} | str join "\n"
-    )
     let bookmarks = (
       ^jj log -r $"($matches.change_id):: & \(bookmarks\() | remote_bookmarks\())"
-        --no-graph -T 'bookmarks ++ " "' --color always
+        -T 'bookmarks ++ " "'
+        --no-graph
+        --color always
         --ignore-working-copy
         --at-operation $state.operation
     ) | complete
+    let rev_infos = (
+      ^jj log -r $matches.change_id
+        -T $"change_id.shortest\(8) ++ '(char fs)' ++ author ++ '(char fs)' ++ author.timestamp\() ++ '(char fs)' ++ commit_id.shortest\(8) ++ 
+            '\n' ++ diff.files\().len\() ++
+            '\n' ++ description"
+        --no-graph
+        --color always
+        --ignore-working-copy
+        --at-operation $state.operation
+      ) | lines
+    let msg = $rev_infos | slice (2..)
+    let msg = if ($msg | is-empty) {["(no description)"]} else {$msg}
     let bookmarks = $bookmarks.stdout | str trim
-    if not ($bookmarks | is-empty) {
-      print $">> In ($bookmarks)"
-    }
-    print ""
-    ( ^jj diff -r $matches.change_id --color always --git
+    let bookmarks = if ($bookmarks | is-empty) {""} else {$"(char fs)($bookmarks)"}
+    let rewrapped_header = $"($rev_infos.0 | str replace -a ' ' (char rs))($bookmarks)" |
+      str replace -a (char fs) " " |
+      ^fmt -w ($width | $in * 1.9 | into int) | # hack: fmt doesn't account for ansi color codes
+      str replace -a (char rs) " "
+
+    print --raw [
+      $rewrapped_header
+      "│"
+      ( $msg |
+        update 0 {$"(ansi default_reverse)($in)(ansi reset)"} |
+        each {$"│ ($in)"} | str join "\n" | str trim |
+        ^fmt -w $width -p "│ "
+      )
+      "│"
+      $"($rev_infos.1) file\(s) modified"
+      ""
+    ]
+    ( ^jj diff -r $matches.change_id --color always
+        --git
         ...(if $matches.file? != null {[$matches.file]} else {[]})
         --ignore-working-copy
         --at-operation $state.operation

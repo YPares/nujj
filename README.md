@@ -23,6 +23,7 @@ or to any autoloaded nushell script.
 
 - nushell (nixpkgs#nushell)
 - jj (nixpkgs#jujutsu)
+- gh (nixpkgs#gh)
 - fzf (nixpkgs#fzf)
 - delta (nixpkgs#delta)
-- gh (nixpkgs#gh)
+- fmt (nixpkgs#fmt)
