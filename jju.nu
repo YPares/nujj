@@ -89,3 +89,16 @@ export def ci [
   jj commit ...(if $message != null {[-m $message]} else {[]})
   jj bookmark move --from @- --to @
 }
+
+export def adv [
+  bookmark?: string
+  --revset (-r): string = "trunk()::@"
+] {
+  let bookmark = if $bookmark != null {
+    $bookmark
+  } else {
+    main -r $"($revset) & bookmarks\()" "local_bookmarks.map(|x| x.name())" |
+    rename b | get b | each {split row " "} | flatten | input list
+  }
+  jj bookmark move $bookmark --to $"($bookmark)+"
+}
