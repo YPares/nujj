@@ -36,7 +36,7 @@ def print-files [state: record, matches: record] {
       ^jj log -r $matches.change_id --no-graph
         -T $"self.diff\().files\().map\(|x|
               '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
-              '(char fs)' ++ x.path\() ++ '(char fs) [' ++ x.status\() ++ ']'
+              '● (char fs)(ansi yellow)' ++ x.path\() ++ '(ansi reset)(char fs) [' ++ x.status\() ++ ']'
             ).join\('(char gs)')"
         --ignore-working-copy
         --at-operation $state.selected_operation
@@ -159,7 +159,7 @@ def "main on-load-finished" [state_file: path] {
     [view   menu      prefix color   value                     ];
     [op_log "Op log"  Op     cyan    $state.selected_operation?]
     [log    "Rev log" Rev    magenta $state.selected_change_id?]
-    [files  Files     File   green   null                      ]
+    [files  Files     File   yellow  null                      ]
   ]
 
   let before = $breadcrumbs | take until {$in.view == $state.current_view?}
