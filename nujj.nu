@@ -119,7 +119,19 @@ export def watch-diff [folder] {
   }
 }
 
+# Wraps jj diff in delta
+export def --wrapped diff [...args] {
+  ^jj diff --git ...$args |
+  deltau wrapper
+}
+
 const fzf_callbacks = [(path self | path dirname) "fzf-callbacks.nu"] | path join
+
+def fzf-bindings [dict] {
+  $dict | transpose key vals | each {|x|
+    [--bind $"($x.key):($x.vals | str join "+")"]
+  } | flatten
+}
 
 # A JJ wrapper that uses fzf to show an interactive JJ log and to drill down into revisions
 #
@@ -142,9 +154,6 @@ const fzf_callbacks = [(path self | path dirname) "fzf-callbacks.nu"] | path joi
 # - when using --watch, fzf will return back to the last revision you went into
 #   (with 'right arrow') every time it refreshes, or to the first line of the log
 #   if you did not go into any revision
-# - passing arbitrary template expressions to --template is not supported,
-#   please use only template aliases (for the standard JJ templates or
-#   those defined in your JJ config.toml)
 export def --wrapped log [
   --help (-h) # Show this help page
   --template (-T): string # The alias of the jj log template to use
@@ -181,47 +190,31 @@ export def --wrapped log [
                    # it seems with templates containing NULL
   ] | str join " ++ "
 
-  let tmp_dir = mktemp --directory
-  let pos_file = [$tmp_dir pos.txt] | path join
-  let jj_cmd_file = [$tmp_dir jj_cmd.nu] | path join
-
-  "pos(0)" | save -f $pos_file
-  
   let operation = match $freeze_at_op {
     null => "@"
     _ => {
       ^jj op log --at-operation $freeze_at_op --no-graph -n1 --template 'id.short()'
     }
   }
-  
-  # We generate the command that calls jj and write it to a temp file
-  # (because we will need to call it again in case of refreshes):
-  let width = tput cols | into int | $in / 2 | into int
-  [ ^jj ...$args
-        --color always
-        --template $template
-        --config $"desc-len=($width)"
-        # in case the template uses a 'desc-len' config value
-        --ignore-working-copy
-        --at-operation $operation "|"
-    str replace -r $"'\\s*(char gs)\\s*'" $"'(char gs)'" -a "|"
-    tr (char gs) "\\0" # We use tr because nushell's str replace deals badly with NULL
-  ] | each {|x|
-    if ($x | str contains " ") {
-      $"\"($x)\""
-    } else {
-      $x
-    }
-  } |
-  str join " " | save $jj_cmd_file
 
+  let tmp_dir = mktemp --directory
+  let state_file = [$tmp_dir state.nuon] | path join
+
+  {
+    pos-in-log: 0
+    operation: $operation
+    jj_extra_args: $args
+    log_template: $template
+    current_view: log
+  } | save $state_file
+  
   let fzf_port = port
 
   let jj_watcher_id = if ($freeze_at_op == null) {
     job spawn {
       watch $"(^jj root)/.jj" -q {
         ( http post $"http://localhost:($fzf_port)"
-            $"reload\(nu ($jj_cmd_file))"
+            $"reload\(nu ($fzf_callbacks) list-log ($state_file))"
         )      
       }
     }
@@ -252,27 +245,38 @@ export def --wrapped log [
   }
 
   try {
-    ^nu $jj_cmd_file |
+    ^nu $fzf_callbacks update-view init $state_file 0 " " |
     ( ^fzf
       --read0 --highlight-line
       --layout reverse --no-sort --track
       --ansi --color $color --style default 
       --preview-window "hidden,right,70%,wrap"
-      --preview $"nu ($fzf_callbacks) diff ($operation) {}"
+      --preview $"nu ($fzf_callbacks) preview ($state_file) {n} {}"
       ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
       --delimiter (char us) --with-nth "1,3"
-      --bind "ctrl-r:change-preview-window(bottom,90%|right,70%)+toggle-preview+toggle-preview"
-          # the double toggle is to force preview's refresh
-      --bind "enter:toggle-preview"
-      --bind "ctrl-d:preview-half-page-down"
-      --bind "ctrl-u:preview-half-page-up"
-      --bind "ctrl-e:preview-half-page-up"
-      --bind "page-down:preview-page-down"
-      --bind "page-up:preview-page-up"
-      --bind "esc:cancel"
-      --bind $"left:rebind\(right)+reload\(nu ($jj_cmd_file))+clear-query"
-      --bind $"load:transform\(cat ($pos_file))"
-      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($pos_file))+reload\(nu ($fzf_callbacks) show-files ($operation) {})+clear-query"
+      ...(fzf-bindings {
+        ctrl-r: [
+          "change-preview-window(bottom,90%|right,70%)"
+          toggle-preview
+          toggle-preview
+        ] # the double toggle is to force preview's refresh
+        enter: toggle-preview
+        ctrl-d: preview-half-page-down
+        ctrl-u: preview-half-page-up
+        ctrl-e: preview-half-page-up
+        page-down: preview-page-down
+        page-up: preview-page-up
+        esc: cancel
+        left: [
+          $"reload\(nu ($fzf_callbacks) update-view back ($state_file) {n} {})"
+          clear-query
+        ]
+        right: [
+          $"reload\(nu ($fzf_callbacks) update-view into ($state_file) {n} {})"
+          clear-query
+        ]
+        load: $"transform\(nu ($fzf_callbacks) on-load-finished ($state_file))"
+      })
     )
   }
 
@@ -287,12 +291,6 @@ export def --wrapped log [
   rm -rf $tmp_dir
 }
 
-# Wraps jj diff in delta
-export def --wrapped diff [...args] {
-  ^jj diff --git ...$args |
-  deltau wrapper
-}
-
 # See 'nujj log --help'
 export def --wrapped main [
   --help (-h) # Show this help page
@@ -305,3 +303,4 @@ export def --wrapped main [
 ] {
   log ...(if $help {[--help]} else {[]}) --template $template --freeze-at-op $freeze_at_op --watch $watch ...$args
 }
+
