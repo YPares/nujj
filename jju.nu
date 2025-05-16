@@ -117,12 +117,26 @@ def cat-args [] {
   str join ' '
 }
 
-export def --wrapped main [...args] {
+def get-theme-flags [] {
+  if (which powershell.exe | length) > 0 {
+    if (( ^powershell.exe -noprofile -nologo -noninteractive
+          '$a = Get-ItemProperty -Path HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize; $a.AppsUseLightTheme'
+        ) == "1") {
+      "--light"
+    } else {
+      "--dark"
+    } 
+  } else {
+    "--detect-dark-light auto"
+  }
+}
+
+export def --wrapped main [--side-by-side (-s) ...args] {
   jj ...$args --color always |
   ( fzf
     --ansi --layout reverse --style default --height -1 --no-clear --no-sort --track
     --preview-window hidden,right,70%,wrap
-    --preview $"nu ($explore_script) diff {}"
+    --preview $"nu ($explore_script) diff {} (if $side_by_side {"-s"} else {""}) (get-theme-flags)"
     --bind "ctrl-r:change-preview-window(bottom,85%|right,70%)"
     --bind "enter:toggle-preview"
     --bind "ctrl-d:preview-half-page-down"

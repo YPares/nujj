@@ -1,7 +1,7 @@
 def main [] {}
 
 def with-match [line cls] {
-  let commit_id_parser = '(?<commit_id>\b[0-9a-f]+\b)'
+  let commit_id_parser = '(?<commit_id>\b[k-z]+\b)'
   let file_parser = $"(char fs)\(?<file>.+)(char fs)"
   match ($line | parse -r $commit_id_parser) {
     [$cim ..$rest] => {
@@ -20,7 +20,9 @@ def with-match [line cls] {
   }
 }
 
-def "main diff" [line] {
+def --wrapped "main diff" [line ...args] {
+  let width = tput cols | into int
+
   with-match $line {|commit_id file|
     print (
       ( jj log -r $commit_id --no-graph --color always
@@ -39,9 +41,9 @@ def "main diff" [line] {
       print $">> In ($bookmarks)"
     }
     print ""
-    ( jj diff -r $commit_id --color always #--git
+    ( jj diff -r $commit_id --color always --git
         ...(if $file != null {[$file]} else {[]})
-    ) #| delta --paging never -s --width 130
+    ) | ^delta --paging never --width $width ...(if $width >= 100 {["--side-by-side"]} else {[]}) ...$args 
   }
 }
 
@@ -49,7 +51,7 @@ def "main show-files" [line] {
   with-match $line {|commit_id|
     ( jj log -r $commit_id --no-graph
         -T $"self.diff\().files\().map\(|x|
-              commit_id.shortest\() ++ ' (char fs)' ++ x.path\() ++ '(char fs)'
+              change_id.shortest\() ++ ' (char fs)' ++ x.path\() ++ '(char fs)'
             ).join\('\n')"
     )
   }

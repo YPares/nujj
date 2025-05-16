@@ -4,3 +4,4 @@
 - jj (nixpkgs#jujutsu)
 - gh (nixpkgs#gh)
 - fzf (nixpkgs#fzf)
+- delta (nixpkgs#delta)
