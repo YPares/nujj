@@ -54,7 +54,7 @@ def "main update-list" [transition state_file fzf_line_num fzf_line_contents] {
   match [$state.current_view $transition] {
     [log into] => {
       $state = $state |
-        update pos-in-log ($fzf_line_num + 1)
+        update pos_in_log ($fzf_line_num + 1)
       let jj_out = print-commit-files $state $fzf_line_contents | complete
       if ($jj_out.stdout | is-empty) {
         print-log $width $state # The revision is empty, we stay where we are
@@ -131,7 +131,7 @@ def "main on-load-finished" [state_file] {
 
   match $state.current_view {
     "log" => {
-      print $"pos\(($state.pos-in-log))"
+      print $"pos\(($state.pos_in_log))"
     }
     _ => {
       print "pos(0)"

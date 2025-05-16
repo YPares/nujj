@@ -201,7 +201,7 @@ export def --wrapped log [
   let state_file = [$tmp_dir state.nuon] | path join
 
   {
-    pos-in-log: 0
+    pos_in_log: 0
     operation: $operation
     jj_extra_args: $args
     log_template: $template
