@@ -214,8 +214,8 @@ export def --wrapped log [
     job spawn {
       watch $"(^jj root)/.jj" -q {
         ( http post $"http://localhost:($fzf_port)"
-            $"reload\(nu ($fzf_callbacks) list-log ($state_file))"
-        )      
+            $"reload\(nu ($fzf_callbacks) update-list refresh ($state_file) {n} {})"
+        )
       }
     }
   }
@@ -245,7 +245,7 @@ export def --wrapped log [
   }
 
   try {
-    ^nu $fzf_callbacks update-view init $state_file 0 " " |
+    ^nu $fzf_callbacks update-list refresh $state_file 0 " " |
     ( ^fzf
       --read0 --highlight-line
       --layout reverse --no-sort --track
@@ -261,18 +261,17 @@ export def --wrapped log [
           toggle-preview
         ] # the double toggle is to force preview's refresh
         enter: toggle-preview
-        ctrl-d: preview-half-page-down
-        ctrl-u: preview-half-page-up
-        ctrl-e: preview-half-page-up
         page-down: preview-page-down
         page-up: preview-page-up
+        ctrl-d: preview-half-page-down
+        "ctrl-u,ctrl-e": preview-half-page-up
         esc: cancel
         left: [
-          $"reload\(nu ($fzf_callbacks) update-view back ($state_file) {n} {})"
+          $"reload\(nu ($fzf_callbacks) update-list back ($state_file) {n} {})"
           clear-query
         ]
         right: [
-          $"reload\(nu ($fzf_callbacks) update-view into ($state_file) {n} {})"
+          $"reload\(nu ($fzf_callbacks) update-list into ($state_file) {n} {})"
           clear-query
         ]
         load: $"transform\(nu ($fzf_callbacks) on-load-finished ($state_file))"

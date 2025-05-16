@@ -15,7 +15,10 @@ export def theme-flags [] {
 
 # Get the layout flags for delta with tput
 export def layout-flags [] {
-  let width = tput cols | into int
+  let width = $env.FZF_PREVIEW_COLUMNS? |
+    default $env.FZF_COLUMNS? |
+    default (tput cols) |
+    into int
   [ --width $width
     ...(if $width >= 130 {
         ["--side-by-side"]

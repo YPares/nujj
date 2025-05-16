@@ -23,15 +23,13 @@ def with-match [line cls] {
   }
 }
 
-def print-log [state] {
-  let width = tput cols | into int | $in / 2 | into int
-
+def print-log [width state] {
   ( ^jj ...$state.jj_extra_args
-        --color always
-        --template $state.log_template
-        --config $"desc-len=($width)"
-        --ignore-working-copy
-        --at-operation $state.operation
+      --color always
+      --template $state.log_template
+      --config $"desc-len=($width / 2 | into int)"
+      --ignore-working-copy
+      --at-operation $state.operation
   ) |
   str replace -ra $"\\s*(char gs)\\s*" (char gs) |
   tr (char gs) "\\0"
@@ -49,8 +47,9 @@ def print-commit-files [state fzf_line_contents] {
   }
 }
 
-def "main update-view" [transition state_file fzf_line_num fzf_line_contents] {
+def "main update-list" [transition state_file fzf_line_num fzf_line_contents] {
   mut state = open $state_file
+  let width = $env.FZF_COLUMNS? | default (tput cols) | into int
 
   match [$state.current_view $transition] {
     [log into] => {
@@ -58,21 +57,28 @@ def "main update-view" [transition state_file fzf_line_num fzf_line_contents] {
         update pos-in-log ($fzf_line_num + 1)
       let jj_out = print-commit-files $state $fzf_line_contents | complete
       if ($jj_out.stdout | is-empty) {
-        print-log $state  # The revision is empty, we stay where we are
+        print-log $width $state # The revision is empty, we stay where we are
       } else {
-        $state = $state | update current_view files
+        $state = $state | (update current_view files)
         print $jj_out.stdout
       }
     }
     [files back] => {
       $state = $state | (update current_view log)
-      print-log $state
+      print-log $width $state
     }
     [log _] => {
-      print-log $state
+      print-log $width $state
     }
     [files _] => {
-      print-commit-files $state $fzf_line_contents
+      let jj_out = print-commit-files $state $fzf_line_contents | complete
+      if ($jj_out.stdout | is-empty) {
+        # The file list is now empty, we go back
+        $state = $state | (update current_view log)
+        print-log $width $state
+      } else {
+        print $jj_out.stdout
+      }
     }
   }
 
@@ -81,7 +87,6 @@ def "main update-view" [transition state_file fzf_line_num fzf_line_contents] {
 
 def "main preview" [state_file fzf_line_num fzf_line_contents] {
   let state = open $state_file
-  let width = tput cols | into int
 
   with-match $fzf_line_contents {|commit_id file|
     if ($state.operation != "@") {
