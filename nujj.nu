@@ -204,7 +204,7 @@ export def --wrapped log [
         # in case the template uses a 'desc-len' config value
         --ignore-working-copy
         --at-operation $operation "|"
-    str replace $"'(char gs)\n'" $"'(char gs)'" -a "|"
+    str replace -r $"'\\s*(char gs)\\s*'" $"'(char gs)'" -a "|"
     tr (char gs) "\\0" # We use tr because nushell's str replace deals badly with NULL
   ] | each {|x|
     if ($x | str contains " ") {
@@ -245,11 +245,18 @@ export def --wrapped log [
     }
   }
 
+  let color = match (deltau theme-flags) {
+    ["--dark"] => "dark"
+    ["--light"] => "light"
+    _ => "16"
+  }
+
   try {
     ^nu $jj_cmd_file |
     ( ^fzf
       --read0 --highlight-line
-      --ansi --layout reverse --style default --no-sort --track
+      --layout reverse --no-sort --track
+      --ansi --color $color --style default 
       --preview-window "hidden,right,70%,wrap"
       --preview $"nu ($fzf_callbacks) diff ($operation) {}"
       ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
