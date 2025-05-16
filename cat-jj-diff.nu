@@ -31,7 +31,7 @@ def --wrapped "main diff" [line ...args] {
           -T "description ++
               change_id.shortest(8) ++ ' (' ++ commit_id.shortest(8) ++ '); ' ++
               author ++ '; ' ++ author.timestamp() ++ '\n' ++
-              self.diff().files().map(|f| f.path()).join(' ')"
+              diff.files().len() ++ ' file(s) modified'"
       ) | lines | each {$">> ($in)"} | str join "\n"
     )
     let bookmarks = (

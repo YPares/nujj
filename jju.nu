@@ -150,6 +150,10 @@ export def --wrapped tui [
     {}
   }
 
+  let statedir = mktemp -d
+  let posfile = [$statedir pos.txt] | path join
+  "pos(0)" | save -f $posfile
+
   try {
     jj ...$args --color always -T $template |
     ( fzf
@@ -167,8 +171,9 @@ export def --wrapped tui [
       --bind "page-down:preview-page-down"
       --bind "page-up:preview-page-up"
       --bind "esc:cancel"
-      --bind $"left:($reload_cmd)+clear-query"
-      --bind $"right:reload\(nu ($explore_script) show-files {})+clear-query"
+      --bind $"left:rebind\(right)+($reload_cmd)+clear-query"
+      --bind $"load:transform\(cat ($posfile))"
+      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($posfile))+reload\(nu ($explore_script) show-files {})+clear-query"
     )
   }
 
