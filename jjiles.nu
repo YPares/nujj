@@ -171,6 +171,7 @@ export def --wrapped main [
       --input-border bottom
       --prompt "Filter: " --ghost "(Ctrl+f to hide)"
       --info-command $'echo "($revisions) - $FZF_INFO"' --info inline-right
+      --pointer "🡆" --color "pointer:cyan"
 
       --preview-window "right,50%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")

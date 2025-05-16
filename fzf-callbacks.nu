@@ -158,7 +158,7 @@ def "main on-load-finished" [state_file: path] {
 
   let breadcrumbs = [
     [view   menu      prefix color   value                     ];
-    [op_log "Op log"  Op     cyan    $state.selected_operation?]
+    [op_log "Op log"  Op     blue    $state.selected_operation?]
     [log    "Rev log" Rev    magenta $state.selected_change_id?]
     [files  Files     File   yellow  null                      ]
   ]
