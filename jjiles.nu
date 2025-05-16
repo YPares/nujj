@@ -2,10 +2,17 @@ use ./deltau.nu
 
 const fzf_callbacks = [(path self | path dirname) "fzf-callbacks.nu"] | path join
 
-def fzf-bindings [dict] {
+def to-fzf-bindings [dict] {
   $dict | transpose key vals | each {|x|
     [--bind $"($x.key):($x.vals | str join "+")"]
   } | flatten
+}
+
+def --wrapped cmd [
+  --fzf-command (-c): string = "reload"
+  ...args: string
+]: nothing -> string {
+  $"($fzf_command)\(nu -n ($fzf_callbacks) ($args | str join ' '))"
 }
 
 #
@@ -88,8 +95,8 @@ export def --wrapped main [
   let jj_watcher_id = if ($freeze_at_op == null) {
     job spawn {
       watch $"(^jj root)/.jj" -q {
-        ( http post $"http://localhost:($fzf_port)"
-            $"reload\(nu -n ($fzf_callbacks) update-list refresh ($state_file) {})"
+        ( cmd update-list refresh $state_file "{}" |
+            http post $"http://localhost:($fzf_port)"
         )
       }
     }
@@ -124,36 +131,43 @@ export def --wrapped main [
   
     ^nu -n $fzf_callbacks update-list refresh $state_file |
     ( ^fzf
-      --read0 --highlight-line
+      --read0
+      --delimiter (char us) --with-nth "1,3"
       --layout reverse --no-sort --track
+
       --ansi --color $color --style default
       --border none --info right
-      # --info-command $"nu -n ($fzf_callbacks) info ($state_file)"
+      --highlight-line
+
       --preview-window "right,border-left,70%,hidden"
-      --preview $"nu -n ($fzf_callbacks) preview ($state_file) {}"
+      --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
+
       ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
-      --delimiter (char us) --with-nth "1,3"
-      ...(fzf-bindings {
+
+      ...(to-fzf-bindings {
+
+        left: [
+          (cmd update-list back $state_file "{}")
+          clear-query
+        ]
+        right: [
+          (cmd update-list into $state_file "{}")
+          clear-query
+        ]
+        load: (cmd -c transform on-load-finished $state_file)
         ctrl-r: [
           "change-preview-window(bottom,border-top,90%|right,border-left,70%)"
           toggle-preview
           toggle-preview
         ] # the double toggle is to force preview's refresh
-        enter: toggle-preview
-        page-down: preview-page-down
-        page-up: preview-page-up
-        ctrl-d: preview-half-page-down
+
+        enter:           toggle-preview
+        page-down:       preview-page-down
+        page-up:         preview-page-up
+        ctrl-d:          preview-half-page-down
         "ctrl-u,ctrl-e": preview-half-page-up
-        esc: cancel
-        left: [
-          $"reload\(nu -n ($fzf_callbacks) update-list back ($state_file) {})"
-          clear-query
-        ]
-        right: [
-          $"reload\(nu -n ($fzf_callbacks) update-list into ($state_file) {})"
-          clear-query
-        ]
-        load: $"transform\(nu -n ($fzf_callbacks) on-load-finished ($state_file))"
+        esc:             cancel
+
       })
     )
   }

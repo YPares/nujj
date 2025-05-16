@@ -127,11 +127,6 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
   }
 }
 
-def "main info" [state_file: path] {
-  let state = open $state_file
-  print $state.current_view
-}
-
 def "main on-load-finished" [state_file: path] {
   let state = open $state_file
 
