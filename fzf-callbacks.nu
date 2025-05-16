@@ -134,12 +134,18 @@ def "main info" [state_file] {
 def "main on-load-finished" [state_file] {
   let state = open $state_file
 
-  match $state.current_view {
-    "log" => {
-      print $"pos\(($state.pos_in_log))"
-    }
-    _ => {
-      print "pos(0)"
-    }
+  let pos = match $state.current_view {
+    "log" => $state.pos_in_log
+    _ => 0
   }
+
+  let header = match $state.current_view {
+    "log" => "Log"
+    "files" => "Modified files"
+  }
+
+  print ([
+    $"pos\(($pos))"
+    $"change-header\(($header):)"
+  ] | str join "+")
 }
