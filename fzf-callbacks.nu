@@ -117,27 +117,27 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
         --ignore-working-copy
         --at-operation $state.selected_operation
       ) | lines
-    let msg = $rev_infos | slice (2..)
-    let msg = if ($msg | is-empty) {["(no description)"]} else {$msg}
+    let message = $rev_infos | slice 2.. | str join "\n" | str trim
+    let message = if ($message | is-empty) {"(no description)"} else {$message}
     let bookmarks = $bookmarks.stdout | str trim
     let bookmarks = if ($bookmarks | is-empty) {""} else {$"(char fs)($bookmarks)"}
     let rewrapped_header = $"($rev_infos.0 | str replace -a ' ' (char rs))($bookmarks)" |
       str replace -a (char fs) " " |
       ^fmt -w ($width | $in * 1.9 | into int) | # hack: fmt doesn't account for ansi color codes
       str replace -a (char rs) " "
+    let rewrapped_message = $message | ^fmt -w ($width - 4) | lines
+    let title = $rewrapped_message | take until {$in =~ '^\s*$'} |
+      each {$"(ansi default_reverse) ($in) (ansi reset)"}
+    let message_rest = $rewrapped_message | slice ($title | length)..
 
-    print --raw [
-      $rewrapped_header
-      "│"
-      ( $msg |
-        update 0 {$"(ansi default_reverse) ($in) (ansi reset)"} |
-        each {$"│ ($in)"} | str join "\n" | str trim |
-        ^fmt -w $width -p "│ "
-      )
-      "│"
-      $"($rev_infos.1) file\(s) modified"
-      ""
-    ]
+    ( print
+        $rewrapped_header
+        "┌"
+        ...($title | append $message_rest | each {$"│ ($in)"})
+        "└"
+        $"($rev_infos.1) file\(s) modified"
+        ""
+    )
     ( ^jj diff -r $matches.change_id --color always
         --git
         ...(if $matches.file? != null {[$matches.file]} else {[]})
