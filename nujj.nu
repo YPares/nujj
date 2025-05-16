@@ -148,12 +148,6 @@ def fzf-bindings [dict] {
 # - Ctrl+r: switch between preview panel right & bottom positions
 # - PageUp & PageDown: scroll through the preview panel (full page)
 # - Ctrl+d & Ctrl+u: scroll through the preview panel (half page)
-#
-# Important:
-#
-# - when using --watch, fzf will return back to the last revision you went into
-#   (with 'right arrow') every time it refreshes, or to the first line of the log
-#   if you did not go into any revision
 export def --wrapped log [
   --help (-h) # Show this help page
   --template (-T): string # The alias of the jj log template to use
@@ -304,4 +298,3 @@ export def --wrapped main [
 ] {
   log ...(if $help {[--help]} else {[]}) --template $template --freeze-at-op $freeze_at_op --watch $watch ...$args
 }
-

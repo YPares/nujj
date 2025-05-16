@@ -1,3 +1,5 @@
+# Used inside fzf by jjiles.nu
+
 use ./deltau.nu
 
 def main [] {}
@@ -87,6 +89,9 @@ def "main update-list" [transition state_file fzf_line_num fzf_line_contents] {
 
 def "main preview" [state_file fzf_line_num fzf_line_contents] {
   let state = open $state_file
+  if ($state.current_view == log) {
+    $state | update pos_in_log ($fzf_line_num + 1) | save -f $state_file
+  }
 
   with-match $fzf_line_contents {|commit_id file|
     if ($state.operation != "@") {
