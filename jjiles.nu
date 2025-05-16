@@ -20,6 +20,9 @@ def lcond [bool list] {
 }
 
 const default_config = {
+  interface: {
+    menu_position: top
+  }
   bindings: {
     fzf: {
       "esc,ctrl-c":     cancel
@@ -184,7 +187,11 @@ export def --wrapped main [
     ( ^fzf
       --read0
       --delimiter (char us) --with-nth "1,3"
-      --layout reverse --no-sort --track
+      --layout (match $config.interface.menu_position {
+        "top" => "reverse"
+        "bottom" => "reverse-list"
+      })
+      --no-sort --track
       ...(lcond $hide_search [--no-input])
       ...(lcond (not $fuzzy) [--exact])
 
@@ -192,7 +199,10 @@ export def --wrapped main [
       --ansi --color $color
       --highlight-line
       --header-border block --header-first
-      --input-border bottom
+      --input-border (match $config.interface.menu_position {
+        "top" => "bottom"
+        "bottom" => "top"
+      })
       --prompt "Filter: " --ghost "(Ctrl+f to hide)"
       --info-command $'echo "($revisions) - $FZF_INFO"' --info inline-right
       --pointer "🡆" --color "pointer:cyan"
