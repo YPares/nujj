@@ -214,7 +214,7 @@ export def --wrapped log [
     job spawn {
       watch $"(^jj root)/.jj" -q {
         ( http post $"http://localhost:($fzf_port)"
-            $"reload\(nu ($fzf_callbacks) update-list refresh ($state_file) {n} {})"
+            $"reload\(nu -n ($fzf_callbacks) update-list refresh ($state_file) {n} {})"
         )
       }
     }
@@ -245,18 +245,20 @@ export def --wrapped log [
   }
 
   try {
-    ^nu $fzf_callbacks update-list refresh $state_file 0 " " |
+    ^nu -n $fzf_callbacks update-list refresh $state_file 0 " " |
     ( ^fzf
       --read0 --highlight-line
       --layout reverse --no-sort --track
       --ansi --color $color --style default 
-      --preview-window "hidden,right,70%,wrap"
-      --preview $"nu ($fzf_callbacks) preview ($state_file) {n} {}"
+      --border none --info right
+      # --info-command $"nu -n ($fzf_callbacks) info ($state_file)"
+      --preview-window "right,border-left,70%,hidden"
+      --preview $"nu -n ($fzf_callbacks) preview ($state_file) {n} {}"
       ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
       --delimiter (char us) --with-nth "1,3"
       ...(fzf-bindings {
         ctrl-r: [
-          "change-preview-window(bottom,90%|right,70%)"
+          "change-preview-window(bottom,border-top,90%|right,border-left,70%)"
           toggle-preview
           toggle-preview
         ] # the double toggle is to force preview's refresh
@@ -267,14 +269,14 @@ export def --wrapped log [
         "ctrl-u,ctrl-e": preview-half-page-up
         esc: cancel
         left: [
-          $"reload\(nu ($fzf_callbacks) update-list back ($state_file) {n} {})"
+          $"reload\(nu -n ($fzf_callbacks) update-list back ($state_file) {n} {})"
           clear-query
         ]
         right: [
-          $"reload\(nu ($fzf_callbacks) update-list into ($state_file) {n} {})"
+          $"reload\(nu -n ($fzf_callbacks) update-list into ($state_file) {n} {})"
           clear-query
         ]
-        load: $"transform\(nu ($fzf_callbacks) on-load-finished ($state_file))"
+        load: $"transform\(nu -n ($fzf_callbacks) on-load-finished ($state_file))"
       })
     )
   }

@@ -32,7 +32,7 @@ def print-log [width state] {
       --at-operation $state.operation
   ) |
   str replace -ra $"\\s*(char gs)\\s*" (char gs) |
-  tr (char gs) "\\0"
+  tr (char gs) \0
 }
 
 def print-commit-files [state fzf_line_contents] {
@@ -43,7 +43,7 @@ def print-commit-files [state fzf_line_contents] {
             ).join\('(char gs)')"
         --ignore-working-copy
         --at-operation $state.operation
-    ) | tr (char gs) '\0'
+    ) | tr (char gs) \0
   }
 }
 
@@ -119,6 +119,11 @@ def "main preview" [state_file fzf_line_num fzf_line_contents] {
         --at-operation $state.operation
     ) | deltau wrapper --paging never 
   }
+}
+
+def "main info" [state_file] {
+  let state = open $state_file
+  print $state.current_view
 }
 
 def "main on-load-finished" [state_file] {
