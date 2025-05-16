@@ -19,6 +19,22 @@ def lcond [bool list] {
   if $bool {$list} else {[]}
 }
 
+const default_config = {
+  bindings: {
+    fzf: {
+      "esc,ctrl-c":     cancel
+      scroll-up:        offset-up
+      scroll-down:      offset-down
+      "alt-down,alt-j": page-down
+      "alt-up,alt-k":   page-up
+      page-down:        preview-page-down
+      page-up:          preview-page-up
+      ctrl-d:           preview-half-page-down
+      ctrl-u:           preview-half-page-up
+    }
+  }
+}
+
 # # JJiles. A JJ Watcher.
 #
 # Shows an interactive and auto-updating jj log that allows you to drill down into revisions.
@@ -32,17 +48,16 @@ def lcond [bool list] {
 # Additionally, JJiles can be told to automatically snapshot the working copy and refresh
 # upon changes to a local folder with --watch.
 #
-# # Key bindings
-# 
+# # Main key bindings
+#
 # - Right & left arrows: go into/out of a revision (to preview only specific files)
 # - Return: open/close the preview panel (showing the diff of a revision)
 # - Ctrl+f or F3: toggle the search field on/off
 # - Ctrl+r: place the preview on the right (repeat to change preview window size)
 # - Ctrl+b: put the preview on the bottom (repeat to change preview window size)
-# - PageUp & PageDown: scroll through the preview panel (full page)
-# - Ctrl+d & Ctrl+u/e: scroll through the preview panel (half page)
-# - Esc or Ctrl+c: clear the searchbar (do it twice to exit)
 # - Ctrl+q: exit immediately
+#
+# Other key bindings are rebindable via the JJ config file (see --output-default-config)
 #
 # # Notes about using custom JJ log templates
 # 
@@ -51,6 +66,9 @@ def lcond [bool list] {
 # - `desc-len`: will be set to half this width (as JJ template language does not support basic arithmetic for now),
 #   to give an acceptable size at which to truncate commit description headers:
 #   `truncate_end(config("desc-len").as_integer(), description.first_line())`
+#
+# JJiles can be configured via a `[jjiles]` section in your ~/.config/jj/config.toml
+# For now, only `[jjiles.bindings.fzf]` is used
 export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log
@@ -61,11 +79,17 @@ export def --wrapped main [
   --watch (-w): path # The folder to watch for changes. Cannot be used with --freeze-at-op
   --hide-search (-S) # The finder is hidden by default
   --fuzzy # Use fuzzy finding instead of exact match
+  --output-default-config # Output the default config
   ...args # Extra jj args
 ] {
-  if $help {
-    help
+  if $output_default_config {
+    return {jjiles: $default_config}
   }
+
+  # We read the user config:
+  let config = $default_config | merge deep (
+    ^jj config list jjiles e> /dev/null | from toml | get -i jjiles | default {}
+  )
 
   # We retrieve the user default log revset:
   let revisions = if ($revisions == null) {
@@ -180,12 +204,12 @@ export def --wrapped main [
 
       ...(to-fzf-bindings {
 
-        left: [
+        "left,ctrl-h": [
           (cmd update-list back $state_file "{n}" "{}")
           clear-query
           ...(lcond $hide_search [hide-input])
         ]
-        right: [
+        "right,ctrl-l": [
           (cmd update-list into $state_file "{n}" "{}")
           clear-query
           ...(lcond $hide_search [hide-input])
@@ -204,11 +228,8 @@ export def --wrapped main [
 
         "ctrl-f,f3":     [clear-query, toggle-input]
         enter:           [toggle-preview, show-header]
-        page-down:       preview-page-down
-        page-up:         preview-page-up
-        ctrl-d:          preview-half-page-down
-        "ctrl-u,ctrl-e": preview-half-page-up
-        "esc,ctrl-c":    cancel
+
+        ...$config.bindings.fzf
 
       })
     )
