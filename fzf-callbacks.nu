@@ -61,10 +61,15 @@ def --wrapped "main update-list" [
   let width = $env.FZF_COLUMNS? | default (tput cols) | into int
   let matches = $contents | str join " " | get-matches
   
+  match $state.current_view {
+    "log" => {
+      $state = $state | update pos_in_rev_log ($fzf_pos + 1)
+    }
+  }
+  
   match [$state.current_view $transition] {
     [log into] => {
       $state = $state | merge {
-        pos_in_rev_log:     ($fzf_pos + 1)
         current_view:       files
         selected_change_id: $matches.change_id?
       }
