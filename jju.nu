@@ -53,7 +53,7 @@ def to-group-name [] {
 }
 
 # Get the jj log as a table
-export def main [
+export def tblog [
   --revset (-r): string
   ...columns: string
 ] {
@@ -98,8 +98,37 @@ export def adv [
   let bookmark = if $bookmark != null {
     $bookmark
   } else {
-    main -r $"($revset) & bookmarks\()" "local_bookmarks.map(|x| x.name())" |
+    tblog -r $"($revset) & bookmarks\()" "local_bookmarks.map(|x| x.name())" |
     rename index b | get b | each {split row " "} | flatten | input list
   }
   jj bookmark move $bookmark --to $"($bookmark)+"
+}
+
+const explore_script = [(path self | path dirname) "cat-jj-diff.nu"] | path join
+
+def cat-args [] {
+  each {|arg|
+    if ($arg | str contains " ") {
+      $"'($arg)'"
+    } else {
+      $arg      
+    }
+  } |
+  str join ' '
+}
+
+export def --wrapped main [...args] {
+  jj ...$args --color always |
+  ( fzf
+    --ansi --layout reverse --style default --height -1 --no-clear --no-sort --track
+    --preview-window hidden,right,70%,wrap
+    --preview $"nu ($explore_script) diff {}"
+    --bind "ctrl-r:change-preview-window(bottom,85%|right,70%)"
+    --bind "enter:toggle-preview"
+    --bind "ctrl-d:preview-half-page-down"
+    --bind "ctrl-e:preview-half-page-up"
+    --bind "esc:cancel"
+    --bind $"left:reload\(jj ($args | cat-args) --color always)+clear-query"
+    --bind $"right:reload\(nu ($explore_script) show-files {})+clear-query"
+  )
 }
