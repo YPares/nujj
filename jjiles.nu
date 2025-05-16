@@ -30,12 +30,15 @@ def --wrapped cmd [
 #
 # # Key bindings
 # 
-# - Return: open/close the preview panel (showing the diff of a revision)
 # - Right & left arrows: go into/out of a revision (to preview only specific files)
+# - Return: open/close the preview panel (showing the diff of a revision)
+# - Ctrl+f or F3: begin a fuzzy search on the log / exit search
 # - Ctrl+r: place the preview on the right (repeat to change preview window size)
 # - Ctrl+b: put the preview on the bottom (repeat to change preview window size)
 # - PageUp & PageDown: scroll through the preview panel (full page)
-# - Ctrl+d & Ctrl+u: scroll through the preview panel (half page)
+# - Ctrl+d & Ctrl+u/e: scroll through the preview panel (half page)
+# - Esc or Ctrl+c: clear the searchbar (do it twice to exit)
+# - Ctrl+q: exit immediately
 #
 # # Notes about using custom JJ log templates
 # 
@@ -152,12 +155,13 @@ export def --wrapped main [
       --read0
       --delimiter (char us) --with-nth "1,3"
       --layout reverse --no-sort --track
+      --no-input
 
-      --ansi --color $color
       --style minimal
+      --ansi --color $color
       --highlight-line
       --header-first --header-border block
-      --prompt "filter:" --color "prompt:grey"
+      --prompt "Search: "
       --info-command $'echo "($revisions) - $FZF_INFO"' --info inline-right
 
       --preview-window "right,50%,hidden,wrap"
@@ -179,22 +183,21 @@ export def --wrapped main [
         ctrl-r: [
           "change-preview-window(right,80%|right,50%)"
           show-header
-          show-input
           refresh-preview
         ]
         ctrl-b: [
           "change-preview-window(bottom,50%|bottom,90%)"
           hide-header
-          hide-input
           refresh-preview
         ]
 
-        enter:           [toggle-preview, show-header, show-input]
+        "ctrl-f,f3":     [clear-query, toggle-input]
+        enter:           [toggle-preview, show-header]
         page-down:       preview-page-down
         page-up:         preview-page-up
         ctrl-d:          preview-half-page-down
         "ctrl-u,ctrl-e": preview-half-page-up
-        esc:             cancel
+        "esc,ctrl-c":    cancel
 
       })
     )
