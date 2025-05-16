@@ -4,28 +4,19 @@ use ./deltau.nu
 
 def main [] {}
 
-def with-match [line cls] {
+def get-matches [
+]: string -> record<commit_id?: string, file?: string> {
   let commit_id_parser = $"(char us)\(?<commit_id>.+)(char us)"
   let file_parser = $"(char fs)\(?<file>.+)(char fs)"
 
-  match ($line | parse -r $commit_id_parser) {
-    [$cim ..$rest] => {
-      match ($line | parse -r $file_parser) {
-        [$fm ..$rest] => {
-          do $cls $cim.commit_id $fm.file
-        }
-        _ => {
-          do $cls $cim.commit_id null
-        }
-      }
-    }
-    _ => {
-      print $"(ansi yellow)-- Nothing to show --(ansi reset)"
-    }
-  }
+  let text = $in
+  [
+    ...($text | parse -r $commit_id_parser)
+    ...($text | parse -r $file_parser)
+  ] | into record
 }
 
-def print-log [width state] {
+def print-log [width: int, state: record] {
   ( ^jj ...$state.jj_extra_args
       --color always
       --template $state.log_template
@@ -37,27 +28,35 @@ def print-log [width state] {
   tr (char gs) \0
 }
 
-def print-commit-files [state fzf_line_contents] {
-  with-match $fzf_line_contents {|commit_id|
-    ( ^jj log -r $commit_id --no-graph
+def print-files [state: record, matches: record] {
+  if ($matches | is-empty) {
+    print $"--Unkown revision--(char nul)"
+  } else {
+    ( ^jj log -r $matches.commit_id --no-graph
         -T $"self.diff\().files\().map\(|x|
               '(char us)' ++ commit_id.shortest\() ++ '(char us)(char fs)' ++ x.path\() ++ '(char fs)'
             ).join\('(char gs)')"
         --ignore-working-copy
         --at-operation $state.operation
-    ) | tr (char gs) \0
-  }
+    )
+  } | tr (char gs) \0
 }
 
-def "main update-list" [transition state_file fzf_line_num fzf_line_contents] {
+def "main update-list" [
+  transition: string
+  state_file: path
+  fzf_line_num: int = 0
+  fzf_line_contents: string = ""
+] {
   mut state = open $state_file
   let width = $env.FZF_COLUMNS? | default (tput cols) | into int
-
+  let matches = $fzf_line_contents | get-matches
+  
   match [$state.current_view $transition] {
     [log into] => {
       $state = $state |
         update pos_in_log ($fzf_line_num + 1)
-      let jj_out = print-commit-files $state $fzf_line_contents | complete
+      let jj_out = print-files $state $matches | complete
       if ($jj_out.stdout | is-empty) {
         print-log $width $state # The revision is empty, we stay where we are
       } else {
@@ -73,7 +72,7 @@ def "main update-list" [transition state_file fzf_line_num fzf_line_contents] {
       print-log $width $state
     }
     [files _] => {
-      let jj_out = print-commit-files $state $fzf_line_contents | complete
+      let jj_out = print-files $state $matches | complete
       if ($jj_out.stdout | is-empty) {
         # The file list is now empty, we go back
         $state = $state | (update current_view log)
@@ -87,18 +86,22 @@ def "main update-list" [transition state_file fzf_line_num fzf_line_contents] {
   $state | save -f $state_file
 }
 
-def "main preview" [state_file fzf_line_num fzf_line_contents] {
+def "main preview" [state_file: path, fzf_line_num: int = 0, fzf_line_contents: string = ""] {
   let state = open $state_file
   if ($state.current_view == log) {
     $state | update pos_in_log ($fzf_line_num + 1) | save -f $state_file
   }
 
-  with-match $fzf_line_contents {|commit_id file|
+  let matches = $fzf_line_contents | get-matches
+
+  if ($matches | is-empty) {
+    print "--Nothing to show--"
+  } else {
     if ($state.operation != "@") {
       print $">> (ansi yellow)At operation: ($state.operation)(ansi reset)"
     }
     print (
-      ( ^jj log -r $commit_id --no-graph --color always
+      ( ^jj log -r $matches.commit_id --no-graph --color always
           -T "description ++
               change_id.shortest(8) ++ ' (' ++ commit_id.shortest(8) ++ '); ' ++
               author ++ '; ' ++ author.timestamp() ++ '\n' ++
@@ -108,7 +111,7 @@ def "main preview" [state_file fzf_line_num fzf_line_contents] {
       ) | lines | each {$">> ($in)"} | str join "\n"
     )
     let bookmarks = (
-      ^jj log -r $"($commit_id):: & \(bookmarks\() | remote_bookmarks\())"
+      ^jj log -r $"($matches.commit_id):: & \(bookmarks\() | remote_bookmarks\())"
         --no-graph -T 'bookmarks ++ " "' --color always
         --ignore-working-copy
         --at-operation $state.operation
@@ -118,20 +121,20 @@ def "main preview" [state_file fzf_line_num fzf_line_contents] {
       print $">> In ($bookmarks)"
     }
     print ""
-    ( ^jj diff -r $commit_id --color always --git
-        ...(if $file != null {[$file]} else {[]})
+    ( ^jj diff -r $matches.commit_id --color always --git
+        ...(if $matches.file? != null {[$matches.file]} else {[]})
         --ignore-working-copy
         --at-operation $state.operation
     ) | deltau wrapper --paging never 
   }
 }
 
-def "main info" [state_file] {
+def "main info" [state_file: path] {
   let state = open $state_file
   print $state.current_view
 }
 
-def "main on-load-finished" [state_file] {
+def "main on-load-finished" [state_file: path] {
   let state = open $state_file
 
   let pos = match $state.current_view {

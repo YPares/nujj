@@ -122,7 +122,7 @@ export def --wrapped main [
   try {
     ^jj debug snapshot
   
-    ^nu -n $fzf_callbacks update-list refresh $state_file 0 " " |
+    ^nu -n $fzf_callbacks update-list refresh $state_file |
     ( ^fzf
       --read0 --highlight-line
       --layout reverse --no-sort --track
