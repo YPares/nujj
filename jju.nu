@@ -129,16 +129,18 @@ export def watch-diff [folder] {
 const explore_script = [(path self | path dirname) "cat-jj-diff.nu"] | path join
 
 # Uses fzf to show the jj log and to allow to drill into revisions
-export def --wrapped fuzzy [--side-by-side (-s) ...args] {
+export def --wrapped tui [...args] {
   jj ...$args --color always |
   ( fzf
     --ansi --layout reverse --style default --height -1 --no-clear --no-sort --track
     --preview-window hidden,right,70%,wrap
-    --preview $"nu ($explore_script) diff {} (if $side_by_side {"-s"} else {""}) (deltau theme-flags-from-system)"
-    --bind "ctrl-r:change-preview-window(bottom,85%|right,70%)"
+    --preview $"nu ($explore_script) diff {} (deltau theme-flags-from-system)"
+    --bind "ctrl-r:change-preview-window(bottom,85%|right,70%)+toggle-preview+toggle-preview" # force preview layout refreshing
     --bind "enter:toggle-preview"
     --bind "ctrl-d:preview-half-page-down"
-    --bind "ctrl-e:preview-half-page-up"
+    --bind "ctrl-u:preview-half-page-up"
+    --bind "page-down:preview-page-down"
+    --bind "page-up:preview-page-up"
     --bind "esc:cancel"
     --bind $"left:reload\(jj ($args | cat-args) --color always)+clear-query"
     --bind $"right:reload\(nu ($explore_script) show-files {})+clear-query"
@@ -152,7 +154,7 @@ export def --wrapped log [...args] {
 }
 
 # Wraps jj diff in delta
-export def --wrapped main [...args] {
+export def --wrapped diff [...args] {
   ^jj diff --git ...$args |
   deltau auto-layout (deltau theme-flags-from-system)
 }

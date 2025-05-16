@@ -15,7 +15,7 @@ export def theme-flags-from-system [] {
 export def --wrapped auto-layout [...delta_args] {
   let width = tput cols | into int
   $in | ^delta --width $width ...(
-      if $width >= 100 {["--side-by-side"]} else {[]}
+      if $width >= 130 {["--side-by-side"]} else {[]}
   ) ...$delta_args
 }
 
