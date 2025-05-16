@@ -42,10 +42,13 @@ def print-files [state: record, matches: record] {
   } | tr (char gs) \0
 }
 
+def fzf-pos [] {
+  $env.FZF_POS? | default 0 | into int
+}
+
 def "main update-list" [
   transition: string
   state_file: path
-  fzf_line_num: int = 0
   fzf_line_contents: string = ""
 ] {
   mut state = open $state_file
@@ -55,7 +58,7 @@ def "main update-list" [
   match [$state.current_view $transition] {
     [log into] => {
       $state = $state |
-        update pos_in_log ($fzf_line_num + 1)
+        update pos_in_log (fzf-pos)
       let jj_out = print-files $state $matches | complete
       if ($jj_out.stdout | is-empty) {
         print-log $width $state # The revision is empty, we stay where we are
@@ -86,10 +89,10 @@ def "main update-list" [
   $state | save -f $state_file
 }
 
-def "main preview" [state_file: path, fzf_line_num: int = 0, fzf_line_contents: string = ""] {
+def "main preview" [state_file: path, fzf_line_contents: string = ""] {
   let state = open $state_file
   if ($state.current_view == log) {
-    $state | update pos_in_log ($fzf_line_num + 1) | save -f $state_file
+    $state | update pos_in_log (fzf-pos) | save -f $state_file
   }
 
   let matches = $fzf_line_contents | get-matches

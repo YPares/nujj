@@ -89,7 +89,7 @@ export def --wrapped main [
     job spawn {
       watch $"(^jj root)/.jj" -q {
         ( http post $"http://localhost:($fzf_port)"
-            $"reload\(nu -n ($fzf_callbacks) update-list refresh ($state_file) {n} {})"
+            $"reload\(nu -n ($fzf_callbacks) update-list refresh ($state_file) {})"
         )
       }
     }
@@ -130,7 +130,7 @@ export def --wrapped main [
       --border none --info right
       # --info-command $"nu -n ($fzf_callbacks) info ($state_file)"
       --preview-window "right,border-left,70%,hidden"
-      --preview $"nu -n ($fzf_callbacks) preview ($state_file) {n} {}"
+      --preview $"nu -n ($fzf_callbacks) preview ($state_file) {}"
       ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
       --delimiter (char us) --with-nth "1,3"
       ...(fzf-bindings {
@@ -146,11 +146,11 @@ export def --wrapped main [
         "ctrl-u,ctrl-e": preview-half-page-up
         esc: cancel
         left: [
-          $"reload\(nu -n ($fzf_callbacks) update-list back ($state_file) {n} {})"
+          $"reload\(nu -n ($fzf_callbacks) update-list back ($state_file) {})"
           clear-query
         ]
         right: [
-          $"reload\(nu -n ($fzf_callbacks) update-list into ($state_file) {n} {})"
+          $"reload\(nu -n ($fzf_callbacks) update-list into ($state_file) {})"
           clear-query
         ]
         load: $"transform\(nu -n ($fzf_callbacks) on-load-finished ($state_file))"
