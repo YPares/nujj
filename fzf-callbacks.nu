@@ -17,12 +17,12 @@ def get-matches [
 }
 
 def print-log [width: int, state: record] {
-  ( ^jj ...$state.jj_extra_args
+  ( ^jj ...$state.jj_log_extra_args
       --color always
       --template $state.log_template
       --config $"desc-len=($width / 2 | into int)"
       --ignore-working-copy
-      --at-operation $state.operation
+      --at-operation $state.selected_operation
   ) |
   str replace -ra $"\\s*(char gs)\\s*" (char gs) |
   tr (char gs) \0
@@ -36,10 +36,10 @@ def print-files [state: record, matches: record] {
       ^jj log -r $matches.change_id --no-graph
         -T $"self.diff\().files\().map\(|x|
               '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
-              '(char fs)' ++ x.path\() ++ '(char fs)'
+              '(char fs)' ++ x.path\() ++ '(char fs) [' ++ x.status\() ++ ']'
             ).join\('(char gs)')"
         --ignore-working-copy
-        --at-operation $state.operation
+        --at-operation $state.selected_operation
     ) | tr (char gs) \0 | complete
     if ($jj_out.stdout | is-empty) {
       print $"--Nothing here--(char nul)"
@@ -65,9 +65,9 @@ def --wrapped "main update-list" [
   match [$state.current_view $transition] {
     [log into] => {
       $state = $state | merge {
-        pos_in_log: (fzf-pos)
-        current_view: files
-        change_id: $matches.change_id?
+        pos_in_rev_log:     (fzf-pos)
+        current_view:       files
+        selected_change_id: $matches.change_id?
       }
       print-files $state $matches
     }
@@ -92,7 +92,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
   let width = $env.FZF_PREVIEW_COLUMNS? | default "80" | into int
 
   if ($state.current_view == log) {
-    $state | update pos_in_log (fzf-pos) | save -f $state_file
+    $state | update pos_in_rev_log (fzf-pos) | save -f $state_file
   }
   let matches = $contents | str join " " | get-matches
 
@@ -105,7 +105,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
         --no-graph
         --color always
         --ignore-working-copy
-        --at-operation $state.operation
+        --at-operation $state.selected_operation
     ) | complete
     let rev_infos = (
       ^jj log -r $matches.change_id
@@ -115,7 +115,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
         --no-graph
         --color always
         --ignore-working-copy
-        --at-operation $state.operation
+        --at-operation $state.selected_operation
       ) | lines
     let msg = $rev_infos | slice (2..)
     let msg = if ($msg | is-empty) {["(no description)"]} else {$msg}
@@ -130,7 +130,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
       $rewrapped_header
       "│"
       ( $msg |
-        update 0 {$"(ansi default_reverse)($in)(ansi reset)"} |
+        update 0 {$"(ansi default_reverse) ($in) (ansi reset)"} |
         each {$"│ ($in)"} | str join "\n" | str trim |
         ^fmt -w $width -p "│ "
       )
@@ -142,7 +142,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
         --git
         ...(if $matches.file? != null {[$matches.file]} else {[]})
         --ignore-working-copy
-        --at-operation $state.operation
+        --at-operation $state.selected_operation
     ) | deltau wrapper --paging never 
   }
 }
@@ -150,25 +150,37 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
 def "main on-load-finished" [state_file: path] {
   let state = open $state_file
 
-  let pos = match $state.current_view {
-    "log" => $state.pos_in_log
+  let pos = match $state.current_view? {
+    "log" => ($state.pos_in_rev_log? | default 0)
     _ => 0
   }
 
-  let header = match $state.current_view {
-    "log" => [
-      $"Op (ansi cyan)($state.operation)(ansi reset)"
-      $"(ansi magenta_reverse)Log(ansi reset)"
-    ]
-    "files" => [
-      $"Op (ansi cyan)($state.operation)(ansi reset)"
-      $"Rev (ansi magenta)($state.change_id)(ansi reset)"
-      $"(ansi green_reverse)Files(ansi reset)"
-    ]
-  }
+  let breadcrumbs = [
+    [view   menu      prefix color   value                     ];
+    [op_log "Op log"  Op     cyan    $state.selected_operation?]
+    [log    "Rev log" Rev    magenta $state.selected_change_id?]
+    [files  Files     File   green   null                      ]
+  ]
+
+  let before = $breadcrumbs | take until {$in.view == $state.current_view?}
+  let num_before = $before | length
+  let current = $breadcrumbs | get -i $num_before
+  let after = $breadcrumbs | slice ($num_before + 1)..
+
+  let header = [
+    ...($before | each {|x|
+      $"($x.prefix) (ansi $x.color)($x.value)(ansi reset)"
+    })
+    ...(if ($current != null) {
+      [$"(ansi $"($current.color)_reverse")($current.menu)(ansi reset)"]
+    } else {[]})
+    ...($after | each {|x|
+      $"(ansi attr_dimmed)(ansi $"($x.color)")($x.menu)(ansi reset)"
+    })
+  ] | str join " > "
 
   print ([
-    $"change-header\(($header | str join ' > '))"
+    $"change-header\(($header))"
     $"pos\(($pos))"
   ] | str join "+")
 }

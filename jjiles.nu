@@ -84,11 +84,11 @@ export def --wrapped main [
 
   {
     log_template: $template
-    jj_extra_args: $args
+    jj_log_extra_args: $args
     current_view: log
-    operation: $operation
-    pos_in_log: 0
-    change_id: null
+    selected_operation: $operation
+    pos_in_rev_log: 0
+    selected_change_id: null
   } | save $state_file
   
   let fzf_port = port
