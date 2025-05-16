@@ -45,7 +45,7 @@ def --wrapped "main diff" [line ...args] {
     print ""
     ( jj diff -r $commit_id --color always --git
         ...(if $file != null {[$file]} else {[]})
-    ) | deltau auto-layout --paging never ...$args 
+    ) | ^delta ...(deltau layout-flags) --paging never ...$args 
   }
 }
 

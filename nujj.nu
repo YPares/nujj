@@ -9,7 +9,7 @@ def list-to-revset [] {
   }
 }
 
-# Add/remove parent(s) to a change
+# Add/remove parent(s) to a rev
 export def --wrapped reparent [
   --revision (-r): string = "@"
   ...parents: string
@@ -22,7 +22,7 @@ export def --wrapped reparent [
   )
 }
 
-# Select an operation and restore the working copy back to it
+# Open a picker to select an operation and restore the working copy back to it
 export def back [
   num_ops: number = 15
 ] {
@@ -38,10 +38,13 @@ export def back [
   jj op restore $op.id
 }
 
+# Split a revision according to one of its past states (identified by a commit_id).
+# Keeps the changes before or at that state in the revision,
+# and splits the changes that came after in another rev
 export def restore-at [
-  restoration_point: string
-  --revision (-r): string = "@"
-  --no-split (-S)
+  restoration_point: string # The past commit to restore the revision at
+  --revision (-r): string = "@" # Which rev to split
+  --no-split (-S) # Drop every change that came after restoration_point instead of splitting
 ] {
   if not $no_split {
     jj new --no-edit -A $revision
@@ -76,16 +79,17 @@ export def tblog [
   rename -c {change_id: index}
 }
 
+# Return the bookmarks in some revset as a nushell table
 export def bookmarks-to-table [
   revset: string = "remote_bookmarks()"
 ] {
     tblog -r $revset bookmarks "author.name()" "author.timestamp()" |
     rename -c {author_name: author, author_timestamp: date} |
-    update bookmarks {split row " " | parse "{branch}@{remote}"} | flatten --all |
+    update bookmarks {split row " " | parse "{bookmark}@{remote}"} | flatten --all |
     update date {into datetime}
 }
 
-# Commit and advance the branches
+# Commit and advance the bookmarks
 export def ci [
   --message (-m): string
 ] {
@@ -93,6 +97,7 @@ export def ci [
   jj bookmark move --from @- --to @
 }
 
+# Open a picker to select a bookmark and advance it to its children
 export def adv [
   bookmark?: string
   --revset (-r): string = "trunk()::@"
@@ -108,33 +113,71 @@ export def adv [
 
 # Shows the delta diff everytime a folder changes
 export def watch-diff [folder] {
-  let theme = deltau theme-flags-from-system
+  let theme = deltau theme-flags
+  # delta theme-flags are resolved once because on WSL they can take some time to retrieve
   watch $folder {
     clear
-    ^jj diff --git | deltau auto-layout $theme
+    ^jj diff --git | ^delta ...(deltau layout-flags) ...$theme
   }
 }
 
-const explore_script = [(path self | path dirname) "cat-jj-diff.nu"] | path join
+const print_diff_script = [(path self | path dirname) "print-jj-diff.nu"] | path join
 
-# Uses fzf to show the jj log and to allow to drill into revisions
-export def --wrapped tui [
-  --template (-T): string # which JJ template to use (if any)
-  --watch (-w): path # Watch the given path and refresh fzf whenever it changes
+# A JJ wrapper that uses fzf to show an interactive JJ log and to drill down into revisions
+#
+# Extra positional args will be passed straight to JJ.
+# The first positional arg can be 'evolog', since 'jj log' and 'evolog' use the same
+# templates and their outputs can be parsed by fzf in exactly the same manner.
+# Other JJ subcommands are not supported, do not use them with this wrapper.
+# 
+# Can be told to automatically refresh upon local file changes with --watch.
+#
+# Key bindings:
+# - Return: open/close the preview panel
+# - Right & left arrows: go into/out of a revision (to preview only specific files)
+# - Ctrl+r: switch between preview panel right & bottom positions
+# - PageUp & PageDown: scroll through the preview panel (full page)
+# - Ctrl+d & Ctrl+u: scroll through the preview panel (half page)
+#
+# Important:
+#
+# - when using --watch, fzf will return back to the last revision you went into
+#   (with 'right arrow') every time it refreshes, or to the first line of the log
+#   if you did not go into any revision
+# - passing arbitrary template expressions to --template is not supported,
+#   please use only template aliases (for the standard JJ templates or
+#   those defined in your JJ config.toml)
+export def --wrapped log [
+  --help (-h) # Show this help page
+  --template (-T): string # The alias of the JJ log template to use
+  --watch (-w): path # The folder to watch for changes
   ...args # Extra JJ args
 ] {
+  if $help {
+    help
+  }
+
+  # We retrieve the user template:
   let template = if ($template == null) {
     jj config get templates.log
   } else {
     $template
   }
 
+  # We generate from it a new template from which fzf can reliably extract the
+  # data it needs:
   let template = [
-    $"'(char us)'"
+    $"'(char us)'" # (char us) will be treated as the fzf field delimiter.
+                   # Each "line" of the log will therefore be seen by fzf as:
+                   # graph characters | commit_id | user log template (char gs)
+                   # (with '|' representing (char us))
+                   # so that fzf can only show fields 1 & 3 to the user and still
+                   # extract the commit_id
     "stringify(commit_id.shortest())"
     $"'(char us)'"
     $template
-    $"'(char gs)'"
+    $"'(char gs)'" # We terminate the template by (char gs) because JJ cannot deal
+                   # it seems with templates containing NULL
   ] | str join " ++ "
 
   let tmp_dir = mktemp --directory
@@ -143,11 +186,13 @@ export def --wrapped tui [
 
   "pos(0)" | save -f $pos_file
   
+  # We generate the command that calls jj and write it to a temp file
+  # (because we will need to call it again in case of refreshes):
   let width = tput cols | into int | $in / 2 | into int
   [ jj ...$args --color always -T $template --config $"desc-len=($width)" "|"
-        # in case the template uses the 'desc-len' config value
+        # in case the template uses a 'desc-len' config value
     str replace $"'(char gs)\n'" $"'(char gs)'" -a "|"
-    tr (char gs) "\\0"
+    tr (char gs) "\\0" # We use tr because nushell's str replace deals badly with NULL
   ] | each {|x|
     if ($x | str contains " ") {
       $"\"($x)\""
@@ -157,6 +202,7 @@ export def --wrapped tui [
   } |
   str join " " | save $jj_cmd_file
 
+  # If --watch was given, we start the watcher as a background process:
   let watcher_data = if ($watch != null) {
     if not ($watch | path exists) {
       error make {msg: $"Path ($watch) does not exist"}
@@ -182,12 +228,12 @@ export def --wrapped tui [
       --ansi --layout reverse --style default --no-sort --track
       --highlight-line
       --preview-window hidden,right,70%,wrap
-      --preview $"nu ($explore_script) diff {} (deltau theme-flags-from-system)"
+      --preview $"nu ($print_diff_script) diff {} (deltau theme-flags | str join ' ')"
       ...(if ($watcher_data.fzf_port? != null) {[--listen $watcher_data.fzf_port]}
           else {[]})
       --delimiter (char us) --with-nth "1,3"
       --bind "ctrl-r:change-preview-window(bottom,90%|right,70%)+toggle-preview+toggle-preview"
-          # double toggle: force preview layout refreshing
+          # the double toggle is to force preview's refresh
       --bind "enter:toggle-preview"
       --bind "ctrl-d:preview-half-page-down"
       --bind "ctrl-u:preview-half-page-up"
@@ -197,7 +243,7 @@ export def --wrapped tui [
       --bind "esc:cancel"
       --bind $"left:rebind\(right)+reload\(nu ($jj_cmd_file))+clear-query"
       --bind $"load:transform\(cat ($pos_file))"
-      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($pos_file))+reload\(nu ($explore_script) show-files {})+clear-query"
+      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($pos_file))+reload\(nu ($print_diff_script) show-files {})+clear-query"
     )
   }
 
@@ -208,22 +254,18 @@ export def --wrapped tui [
   rm -rf $tmp_dir
 }
 
-# Wraps jj log in delta
-export def --wrapped log [...args] {
-  ^jj log -T builtin_log_detailed --no-graph --git ...$args |
-  deltau auto-layout (deltau theme-flags-from-system)
-}
-
 # Wraps jj diff in delta
 export def --wrapped diff [...args] {
   ^jj diff --git ...$args |
-  deltau auto-layout (deltau theme-flags-from-system)
+  ^delta ...(deltau layout-flags) ...(deltau theme-flags)
 }
 
+# See 'nujj log --help'
 export def --wrapped main [
+  --help (-h)
   --template (-T): string
   --watch (-w): path
   ...args
 ] {
-  tui --template $template --watch $watch ...$args
+  log ...(if $help {[--help]} else {[]}) --template $template --watch $watch ...$args
 }

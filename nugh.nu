@@ -15,6 +15,7 @@ def defaults [...vals] {
   }
 }
 
+# Get a table of the PRs
 export def --wrapped prs [...args] {
   gh pr ls ...$args --json "number,title,url,headRefName,baseRefName,author,isDraft,statusCheckRollup" |
   from json |
