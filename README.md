@@ -1,6 +1,6 @@
 # nujj
 
-A set of nushell utility functions wrapping the `jj` (Jujutsu) and `gh` (GitHub) CLI tools.
+A set of nushell utility functions wrapping the [`jj`](https://github.com/jj-vcs/jj) and [`gh`](https://github.com/cli/cli) CLI tools.
 
 ## Usage
 
@@ -15,7 +15,7 @@ or to any autoloaded nushell script.
 - Getting the jj log as a structured nushell table
 - Getting PRs lists from GitHub as structured nushell tables
 - Interactive jj log with fzf (à la [jj-fzf](https://github.com/tim-janik/jj-fzf)),
-  with adaptive diff layout & syntax-highlighting via [delta](https://github.com/dandavison/delta)
+  with adaptive diff layout, system theme detection (including in [WSL](https://learn.microsoft.com/en-us/windows/wsl/)) and syntax-highlighting via [delta](https://github.com/dandavison/delta)
 
 ## Dependencies
 
