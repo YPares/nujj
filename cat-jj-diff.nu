@@ -1,3 +1,5 @@
+use ./deltau.nu
+
 def main [] {}
 
 def with-match [line cls] {
@@ -43,7 +45,7 @@ def --wrapped "main diff" [line ...args] {
     print ""
     ( jj diff -r $commit_id --color always --git
         ...(if $file != null {[$file]} else {[]})
-    ) | ^delta --paging never --width $width ...(if $width >= 100 {["--side-by-side"]} else {[]}) ...$args 
+    ) | deltau auto-layout --paging never ...$args 
   }
 }
 

@@ -1,3 +1,5 @@
+use ./deltau.nu
+
 def list-to-revset [] {
   let list = $in
   if ($list | is-empty) {
@@ -104,8 +106,6 @@ export def adv [
   jj bookmark move $bookmark --to $"($bookmark)+"
 }
 
-const explore_script = [(path self | path dirname) "cat-jj-diff.nu"] | path join
-
 def cat-args [] {
   each {|arg|
     if ($arg | str contains " ") {
@@ -117,26 +117,24 @@ def cat-args [] {
   str join ' '
 }
 
-def get-theme-flags [] {
-  if (which powershell.exe | length) > 0 {
-    if (( ^powershell.exe -noprofile -nologo -noninteractive
-          '$a = Get-ItemProperty -Path HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize; $a.AppsUseLightTheme'
-        ) == "1") {
-      "--light"
-    } else {
-      "--dark"
-    } 
-  } else {
-    "--detect-dark-light auto"
+# Shows the delta diff everytime a folder changes
+export def watch-diff [folder] {
+  let theme = deltau theme-flags-from-system
+  watch $folder {
+    clear
+    ^jj diff --git | deltau auto-layout $theme
   }
 }
 
-export def --wrapped main [--side-by-side (-s) ...args] {
+const explore_script = [(path self | path dirname) "cat-jj-diff.nu"] | path join
+
+# Uses fzf to show the jj log and to allow to drill into revisions
+export def --wrapped fuzzy [--side-by-side (-s) ...args] {
   jj ...$args --color always |
   ( fzf
     --ansi --layout reverse --style default --height -1 --no-clear --no-sort --track
     --preview-window hidden,right,70%,wrap
-    --preview $"nu ($explore_script) diff {} (if $side_by_side {"-s"} else {""}) (get-theme-flags)"
+    --preview $"nu ($explore_script) diff {} (if $side_by_side {"-s"} else {""}) (deltau theme-flags-from-system)"
     --bind "ctrl-r:change-preview-window(bottom,85%|right,70%)"
     --bind "enter:toggle-preview"
     --bind "ctrl-d:preview-half-page-down"
@@ -145,4 +143,16 @@ export def --wrapped main [--side-by-side (-s) ...args] {
     --bind $"left:reload\(jj ($args | cat-args) --color always)+clear-query"
     --bind $"right:reload\(nu ($explore_script) show-files {})+clear-query"
   )
+}
+
+# Wraps jj log in delta
+export def --wrapped log [...args] {
+  ^jj log -T builtin_log_detailed --no-graph --git ...$args |
+  deltau auto-layout (deltau theme-flags-from-system)
+}
+
+# Wraps jj diff in delta
+export def --wrapped main [...args] {
+  ^jj diff --git ...$args |
+  deltau auto-layout (deltau theme-flags-from-system)
 }
