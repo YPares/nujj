@@ -147,9 +147,12 @@ const print_diff_script = [(path self | path dirname) "print-jj-diff.nu"] | path
 #   those defined in your JJ config.toml)
 export def --wrapped log [
   --help (-h) # Show this help page
-  --template (-T): string # The alias of the JJ log template to use
-  --watch (-w): path # The folder to watch for changes
-  ...args # Extra JJ args
+  --template (-T): string # The alias of the jj log template to use
+  --freeze-at-op (-f): string
+    # The operation at which to browse the repo (from 'jj op log').
+    # If not given, will watch the changes in the .jj folder to always show an up-to-date log.
+  --watch (-w): path # The folder to watch for changes. Cannot be used with --freeze-at-op
+  ...args # Extra jj args
 ] {
   if $help {
     help
@@ -184,11 +187,23 @@ export def --wrapped log [
 
   "pos(0)" | save -f $pos_file
   
+  let operation = match $freeze_at_op {
+    null => "@"
+    _ => {
+      ^jj op log --at-operation $freeze_at_op --no-graph -n1 --template 'id.short()'
+    }
+  }
+  
   # We generate the command that calls jj and write it to a temp file
   # (because we will need to call it again in case of refreshes):
   let width = tput cols | into int | $in / 2 | into int
-  [ ^jj ...$args --color always -T $template --ignore-working-copy --config $"desc-len=($width)" "|"
+  [ ^jj ...$args
+        --color always
+        --template $template
+        --config $"desc-len=($width)"
         # in case the template uses a 'desc-len' config value
+        --ignore-working-copy
+        --at-operation $operation "|"
     str replace $"'(char gs)\n'" $"'(char gs)'" -a "|"
     tr (char gs) "\\0" # We use tr because nushell's str replace deals badly with NULL
   ] | each {|x|
@@ -202,23 +217,30 @@ export def --wrapped log [
 
   let fzf_port = port
 
-  let jj_watcher_id = job spawn {
-    watch $"(^jj root)/.jj" -q {
-      ( http post $"http://localhost:($fzf_port)"
-          $"reload\(nu ($jj_cmd_file))"
-      )      
+  let jj_watcher_id = if ($freeze_at_op == null) {
+    job spawn {
+      watch $"(^jj root)/.jj" -q {
+        ( http post $"http://localhost:($fzf_port)"
+            $"reload\(nu ($jj_cmd_file))"
+        )      
+      }
     }
   }
 
   let extra_watcher_id = if ($watch != null) {
+    if ($freeze_at_op != null) {
+      rm -rf $tmp_dir
+      error make {msg: "--watch cannot be used with --freeze-at-op"}
+    }
     if not ($watch | path exists) {
       job kill $jj_watcher_id
       rm -rf $tmp_dir
-      error make {msg: $"Path ($watch) does not exist"}
+      error make {msg: $"--watch: ($watch) does not exist"}
     }
     job spawn {
       watch $watch -q {
         ^jj debug snapshot
+        # Will update the .jj folder and therefore trigger the jj watcher
       }
     }
   }
@@ -226,12 +248,11 @@ export def --wrapped log [
   try {
     ^nu $jj_cmd_file |
     ( ^fzf
-      --read0
+      --read0 --highlight-line
       --ansi --layout reverse --style default --no-sort --track
-      --highlight-line
-      --preview-window hidden,right,70%,wrap
-      --preview $"nu ($print_diff_script) diff {}"
-      --listen $fzf_port
+      --preview-window "hidden,right,70%,wrap"
+      --preview $"nu ($print_diff_script) diff ($operation) {}"
+      ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
       --delimiter (char us) --with-nth "1,3"
       --bind "ctrl-r:change-preview-window(bottom,90%|right,70%)+toggle-preview+toggle-preview"
           # the double toggle is to force preview's refresh
@@ -244,7 +265,7 @@ export def --wrapped log [
       --bind "esc:cancel"
       --bind $"left:rebind\(right)+reload\(nu ($jj_cmd_file))+clear-query"
       --bind $"load:transform\(cat ($pos_file))"
-      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($pos_file))+reload\(nu ($print_diff_script) show-files {})+clear-query"
+      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($pos_file))+reload\(nu ($print_diff_script) show-files ($operation) {})+clear-query"
     )
   }
 
@@ -252,7 +273,9 @@ export def --wrapped log [
     job kill $extra_watcher_id
   }
 
-  job kill $jj_watcher_id
+  if ($jj_watcher_id != null) {
+    job kill $jj_watcher_id
+  }
 
   rm -rf $tmp_dir
 }
@@ -265,10 +288,13 @@ export def --wrapped diff [...args] {
 
 # See 'nujj log --help'
 export def --wrapped main [
-  --help (-h)
-  --template (-T): string
-  --watch (-w): path
-  ...args
+  --help (-h) # Show this help page
+  --template (-T): string # The alias of the jj log template to use
+  --freeze-at-op (-f): string
+    # The operation at which to browse the repo (from 'jj op log').
+    # If not given, will watch the changes in the .jj folder to always show an up-to-date log.
+  --watch (-w): path # The folder to watch for changes. Cannot be used with --freeze-at-op
+  ...args # Extra jj args
 ] {
-  log ...(if $help {[--help]} else {[]}) --template $template --watch $watch ...$args
+  log ...(if $help {[--help]} else {[]}) --template $template --freeze-at-op $freeze_at_op --watch $watch ...$args
 }

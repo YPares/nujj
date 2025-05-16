@@ -22,10 +22,13 @@ def with-match [line cls] {
   }
 }
 
-def "main diff" [line] {
+def "main diff" [operation line] {
   let width = tput cols | into int
 
   with-match $line {|commit_id file|
+    if ($operation != "@") {
+      print $">> (ansi yellow)At operation: ($operation)(ansi reset)"
+    }
     print (
       ( ^jj log -r $commit_id --no-graph --color always
           -T "description ++
@@ -33,12 +36,14 @@ def "main diff" [line] {
               author ++ '; ' ++ author.timestamp() ++ '\n' ++
               diff.files().len() ++ ' file(s) modified'"
           --ignore-working-copy
+          --at-operation $operation
       ) | lines | each {$">> ($in)"} | str join "\n"
     )
     let bookmarks = (
       ^jj log -r $"($commit_id):: & \(bookmarks\() | remote_bookmarks\())"
         --no-graph -T 'bookmarks ++ " "' --color always
         --ignore-working-copy
+        --at-operation $operation
     ) | complete
     let bookmarks = $bookmarks.stdout | str trim
     if not ($bookmarks | is-empty) {
@@ -48,17 +53,19 @@ def "main diff" [line] {
     ( ^jj diff -r $commit_id --color always --git
         ...(if $file != null {[$file]} else {[]})
         --ignore-working-copy
+        --at-operation $operation
     ) | deltau wrapper --paging never 
   }
 }
 
-def "main show-files" [line] {
+def "main show-files" [operation line] {
   with-match $line {|commit_id|
     ( ^jj log -r $commit_id --no-graph
         -T $"self.diff\().files\().map\(|x|
               '(char us)' ++ commit_id.shortest\() ++ '(char us)(char fs)' ++ x.path\() ++ '(char fs)'
             ).join\('(char gs)')"
         --ignore-working-copy
+        --at-operation $operation
     ) | tr (char gs) '\0'
   }
 }
