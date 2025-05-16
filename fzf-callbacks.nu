@@ -5,13 +5,13 @@ use ./deltau.nu
 def main [] {}
 
 def get-matches [
-]: string -> record<commit_id?: string, file?: string> {
-  let commit_id_parser = $"(char us)\(?<commit_id>.+)(char us)"
+]: string -> record<change_id?: string, file?: string> {
+  let change_id_parser = $"(char us)\(?<change_id>.+)(char us)"
   let file_parser = $"(char fs)\(?<file>.+)(char fs)"
 
   let text = $in
   [
-    ...($text | parse -r $commit_id_parser)
+    ...($text | parse -r $change_id_parser)
     ...($text | parse -r $file_parser)
   ] | into record
 }
@@ -33,9 +33,10 @@ def print-files [state: record, matches: record] {
     print $"--Nothing here--(char nul)"
   } else {
     let jj_out = (
-      ^jj log -r $matches.commit_id --no-graph
+      ^jj log -r $matches.change_id --no-graph
         -T $"self.diff\().files\().map\(|x|
-              '(char us)' ++ commit_id.shortest\() ++ '(char us)(char fs)' ++ x.path\() ++ '(char fs)'
+              '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
+              '(char fs)' ++ x.path\() ++ '(char fs)'
             ).join\('(char gs)')"
         --ignore-working-copy
         --at-operation $state.operation
@@ -66,6 +67,7 @@ def --wrapped "main update-list" [
       $state = $state | merge {
         pos_in_log: (fzf-pos)
         current_view: files
+        change_id: $matches.change_id?
       }
       print-files $state $matches
     }
@@ -99,7 +101,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
       print $">> (ansi yellow)At operation: ($state.operation)(ansi reset)"
     }
     print (
-      ( ^jj log -r $matches.commit_id --no-graph --color always
+      ( ^jj log -r $matches.change_id --no-graph --color always
           -T "description ++
               change_id.shortest(8) ++ ' (' ++ commit_id.shortest(8) ++ '); ' ++
               author ++ '; ' ++ author.timestamp() ++ '\n' ++
@@ -109,7 +111,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
       ) | lines | each {$">> ($in)"} | str join "\n"
     )
     let bookmarks = (
-      ^jj log -r $"($matches.commit_id):: & \(bookmarks\() | remote_bookmarks\())"
+      ^jj log -r $"($matches.change_id):: & \(bookmarks\() | remote_bookmarks\())"
         --no-graph -T 'bookmarks ++ " "' --color always
         --ignore-working-copy
         --at-operation $state.operation
@@ -119,7 +121,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
       print $">> In ($bookmarks)"
     }
     print ""
-    ( ^jj diff -r $matches.commit_id --color always --git
+    ( ^jj diff -r $matches.change_id --color always --git
         ...(if $matches.file? != null {[$matches.file]} else {[]})
         --ignore-working-copy
         --at-operation $state.operation
@@ -136,12 +138,20 @@ def "main on-load-finished" [state_file: path] {
   }
 
   let header = match $state.current_view {
-    "log" => "Log"
-    "files" => "Modified files"
+    "log" => [
+      $"Op (ansi cyan)($state.operation)(ansi reset)"
+      $"(ansi magenta_reverse)Log(ansi reset)"
+    ]
+    "files" => [
+      $"Op (ansi cyan)($state.operation)(ansi reset)"
+      $"Rev (ansi magenta)($state.change_id)(ansi reset)"
+      $"(ansi green_reverse)Files(ansi reset)"
+    ]
   }
 
   print ([
+    $"change-header\(($header | str join ' > '))"
     $"pos\(($pos))"
-    $"change-header\(($header):)"
   ] | str join "+")
 }
+

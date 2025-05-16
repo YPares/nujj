@@ -61,11 +61,11 @@ export def --wrapped main [
   let template = [
     $"'(char us)'" # (char us) will be treated as the fzf field delimiter.
                    # Each "line" of the log will therefore be seen by fzf as:
-                   # graph characters | commit_id | user log template (char gs)
+                   # graph characters | change_id | user log template (char gs)
                    # (with '|' representing (char us))
                    # so that fzf can only show fields 1 & 3 to the user and still
-                   # extract the commit_id
-    "stringify(commit_id.shortest())"
+                   # extract the change_id
+    "change_id.shortest(8)"
     $"'(char us)'"
     $template
     $"'(char gs)'" # We terminate the template by (char gs) because JJ cannot deal
@@ -83,11 +83,12 @@ export def --wrapped main [
   let state_file = [$tmp_dir state.nuon] | path join
 
   {
-    pos_in_log: 0
-    operation: $operation
-    jj_extra_args: $args
     log_template: $template
+    jj_extra_args: $args
     current_view: log
+    operation: $operation
+    pos_in_log: 0
+    change_id: null
   } | save $state_file
   
   let fzf_port = port
@@ -137,6 +138,7 @@ export def --wrapped main [
 
       --ansi --color $color --style default
       --border none --info right
+      --header-border block --header-first
       --highlight-line
 
       --preview-window "right,border-left,70%,hidden"
@@ -157,6 +159,8 @@ export def --wrapped main [
         load: (cmd -c transform on-load-finished $state_file)
         ctrl-r: [
           "change-preview-window(bottom,border-top,90%|right,border-left,70%)"
+          toggle-header
+          toggle-input
           toggle-preview
           toggle-preview
         ] # the double toggle is to force preview's refresh
