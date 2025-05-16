@@ -129,11 +129,14 @@ export def watch-diff [folder] {
 const explore_script = [(path self | path dirname) "cat-jj-diff.nu"] | path join
 
 # Uses fzf to show the jj log and to allow to drill into revisions
-export def tui [
+export def --wrapped tui [
   --watch (-w): path # Watch the given path and refresh fzf whenever it changes
-  args=[] # Extra JJ args
+  ...args # Extra JJ args
 ] {
-  let reload_cmd = $"reload\(jj ($args | cat-args) --color always)"
+  let template = $"'(char us)' ++ stringify\(commit_id.shortest\()) ++ '(char us)' ++ (jj config get templates.log)"
+
+  let quoted_template = $'"($template)"'
+  let reload_cmd = $"reload\(jj ($args | cat-args) --color always -T ($quoted_template))"
 
   let watcher_data = if ($watch != null) {
     let fzf_port = port
@@ -148,12 +151,14 @@ export def tui [
   }
 
   try {
-    jj ...$args --color always |
+    jj ...$args --color always -T $template |
     ( fzf
       --ansi --layout reverse --style default --no-clear --no-sort --track
       --preview-window hidden,right,70%,wrap
       --preview $"nu ($explore_script) diff {} (deltau theme-flags-from-system)"
-      ...(if ($watcher_data.fzf_port? != null) {[--listen $watcher_data.fzf_port]} else {[]})
+      ...(if ($watcher_data.fzf_port? != null) {[--listen $watcher_data.fzf_port]}
+          else {[]})
+      --delimiter (char us) --with-nth "1,3"
       --bind "ctrl-r:change-preview-window(bottom,90%|right,70%)+toggle-preview+toggle-preview" # force preview layout refreshing
       --bind "enter:toggle-preview"
       --bind "ctrl-d:preview-half-page-down"

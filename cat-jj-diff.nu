@@ -3,7 +3,7 @@ use ./deltau.nu
 def main [] {}
 
 def with-match [line cls] {
-  let commit_id_parser = '(?<commit_id>\b[k-z]+\b)'
+  let commit_id_parser = $"(char us)\(?<commit_id>.+)(char us)"
   let file_parser = $"(char fs)\(?<file>.+)(char fs)"
   match ($line | parse -r $commit_id_parser) {
     [$cim ..$rest] => {
@@ -53,7 +53,7 @@ def "main show-files" [line] {
   with-match $line {|commit_id|
     ( jj log -r $commit_id --no-graph
         -T $"self.diff\().files\().map\(|x|
-              change_id.shortest\() ++ ' (char fs)' ++ x.path\() ++ '(char fs)'
+              '(char us)' ++ commit_id.shortest\() ++ '(char us)(char fs)' ++ x.path\() ++ '(char fs)'
             ).join\('\n')"
     )
   }
