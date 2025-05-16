@@ -38,6 +38,7 @@ def --wrapped cmd [
 # 
 export def --wrapped main [
   --help (-h) # Show this help page
+  --revisions (-r): string # Which rev(s) to log
   --template (-T): string # The alias of the jj log template to use
   --freeze-at-op (-f): string
     # An operation (from 'jj op log') at which to browse your repo.
@@ -47,6 +48,13 @@ export def --wrapped main [
 ] {
   if $help {
     help
+  }
+
+  # We retrieve the user default log revset:
+  let revisions = if ($revisions == null) {
+    ^jj config get revsets.log
+  } else {
+    $revisions
   }
 
   # We retrieve the user template:
@@ -83,6 +91,7 @@ export def --wrapped main [
   let state_file = [$tmp_dir state.nuon] | path join
 
   {
+    revisions: $revisions
     log_template: $template
     jj_log_extra_args: $args
     current_view: log
@@ -138,9 +147,10 @@ export def --wrapped main [
 
       --ansi --color $color
       --style minimal
-      --info right
-      --header-border block --header-first
       --highlight-line
+      --header-first --header-border block
+      --prompt "filter:" --color "prompt:grey"
+      --info-command $'echo "($revisions) - $FZF_INFO"' --info inline-right
 
       --preview-window "right,70%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
