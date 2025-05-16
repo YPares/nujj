@@ -1,6 +1,6 @@
 # nujj
 
-A set of nushell utility functions wrapping the `jj` and `gh` CLI tools.
+A set of nushell utility functions wrapping the `jj` (Jujutsu) and `gh` (GitHub) CLI tools.
 
 ## Usage
 
@@ -10,11 +10,11 @@ E.g. `use <path_to_nujj_folder> *` in a nushell REPL to put `nujj` and `nugh` in
 You can add this `use` line to your `$HOME/.config/nushell/config.nu`
 or to any autoload nushell script.
 
-## Features
+## Main features
 
-- Getting jj log as structured nushell tables
-- Getting PRs from GitHub as structured nushell tables
-- Interactive jj log with fzf
+- Getting the jj log as a nushell table
+- Getting the PRs list from GitHub as a nushell table
+- Interactive jj log with fzf (à la [jj-fzf](https://github.com/tim-janik/jj-fzf))
 
 ## Dependencies
 
