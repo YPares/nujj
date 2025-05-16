@@ -60,7 +60,7 @@ export def main [
   let columns = if ($columns | is-empty) {
       [change_id description "author.name()" "author.timestamp()"]
     } else {
-      $columns
+      [change_id ...$columns]
     }
   let parser = $columns | each { $"{($in | to-group-name)}" } | str join (char fs)
 
@@ -70,7 +70,8 @@ export def main [
   ) |
   str trim --right --char (char rs) |
   split row (char rs) |
-  parse $parser
+  parse $parser |
+  rename -c {change_id: index}
 }
 
 export def bookmarks-to-table [
@@ -98,7 +99,7 @@ export def adv [
     $bookmark
   } else {
     main -r $"($revset) & bookmarks\()" "local_bookmarks.map(|x| x.name())" |
-    rename b | get b | each {split row " "} | flatten | input list
+    rename index b | get b | each {split row " "} | flatten | input list
   }
   jj bookmark move $bookmark --to $"($bookmark)+"
 }

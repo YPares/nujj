@@ -15,8 +15,8 @@ def defaults [...vals] {
   }
 }
 
-export def prs [] {
-  gh pr ls --json "number,title,url,headRefName,baseRefName,author,isDraft,statusCheckRollup" |
+export def --wrapped prs [...args] {
+  gh pr ls ...$args --json "number,title,url,headRefName,baseRefName,author,isDraft,statusCheckRollup" |
   from json |
   update author {get login} |
   update statusCheckRollup {each {|stat|
