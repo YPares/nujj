@@ -1,16 +1,16 @@
 def main [] {}
 
 def with-match [line cls] {
-  let change_id_parser = '(?<change_id>\b[k-z]+\b)'
+  let commit_id_parser = '(?<commit_id>\b[0-9a-f]+\b)'
   let file_parser = $"(char fs)\(?<file>.+)(char fs)"
-  match ($line | parse -r $change_id_parser) {
+  match ($line | parse -r $commit_id_parser) {
     [$cim ..$rest] => {
       match ($line | parse -r $file_parser) {
         [$fm ..$rest] => {
-          do $cls $cim.change_id $fm.file
+          do $cls $cim.commit_id $fm.file
         }
         _ => {
-          do $cls $cim.change_id null
+          do $cls $cim.commit_id null
         }
       }
     }
@@ -21,16 +21,17 @@ def with-match [line cls] {
 }
 
 def "main diff" [line] {
-  with-match $line {|change_id file|
+  with-match $line {|commit_id file|
     print (
-      ( jj log -r $change_id --no-graph --color always
+      ( jj log -r $commit_id --no-graph --color always
           -T "description ++
-              author ++ ' - ' ++ author.timestamp() ++ '\n' ++
-              self.diff().files().len() ++ ' file(s) changed'"
+              change_id.shortest(8) ++ ' (' ++ commit_id.shortest(8) ++ '); ' ++
+              author ++ '; ' ++ author.timestamp() ++ '\n' ++
+              self.diff().files().map(|f| f.path()).join(' ')"
       ) | lines | each {$">> ($in)"} | str join "\n"
     )
     let bookmarks = (
-      jj log -r $"($change_id):: & \(bookmarks\() | remote_bookmarks\())"
+      jj log -r $"($commit_id):: & \(bookmarks\() | remote_bookmarks\())"
       --no-graph -T 'bookmarks ++ " "' --color always
     ) | complete
     let bookmarks = $bookmarks.stdout | str trim
@@ -38,17 +39,17 @@ def "main diff" [line] {
       print $">> In ($bookmarks)"
     }
     print ""
-    ( jj diff -r $change_id --color always --context 0 #--git
+    ( jj diff -r $commit_id --color always #--git
         ...(if $file != null {[$file]} else {[]})
     ) #| delta --paging never -s --width 130
   }
 }
 
 def "main show-files" [line] {
-  with-match $line {|change_id|
-    ( jj log -r $change_id --no-graph
+  with-match $line {|commit_id|
+    ( jj log -r $commit_id --no-graph
         -T $"self.diff\().files\().map\(|x|
-              change_id.shortest\() ++ ' (char fs)' ++ x.path\() ++ '(char fs)'
+              commit_id.shortest\() ++ ' (char fs)' ++ x.path\() ++ '(char fs)'
             ).join\('\n')"
     )
   }
