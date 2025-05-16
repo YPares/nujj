@@ -119,7 +119,7 @@ export def watch-diff [folder] {
   }
 }
 
-const print_diff_script = [(path self | path dirname) "print-jj-diff.nu"] | path join
+const fzf_callbacks = [(path self | path dirname) "fzf-callbacks.nu"] | path join
 
 # A JJ wrapper that uses fzf to show an interactive JJ log and to drill down into revisions
 #
@@ -251,7 +251,7 @@ export def --wrapped log [
       --read0 --highlight-line
       --ansi --layout reverse --style default --no-sort --track
       --preview-window "hidden,right,70%,wrap"
-      --preview $"nu ($print_diff_script) diff ($operation) {}"
+      --preview $"nu ($fzf_callbacks) diff ($operation) {}"
       ...(if ($jj_watcher_id != null) {[--listen $fzf_port]} else {[]})
       --delimiter (char us) --with-nth "1,3"
       --bind "ctrl-r:change-preview-window(bottom,90%|right,70%)+toggle-preview+toggle-preview"
@@ -265,7 +265,7 @@ export def --wrapped log [
       --bind "esc:cancel"
       --bind $"left:rebind\(right)+reload\(nu ($jj_cmd_file))+clear-query"
       --bind $"load:transform\(cat ($pos_file))"
-      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($pos_file))+reload\(nu ($print_diff_script) show-files ($operation) {})+clear-query"
+      --bind $"right:unbind\(right)+execute\(echo 'pos\('$\(\({n} + 1))')' > ($pos_file))+reload\(nu ($fzf_callbacks) show-files ($operation) {})+clear-query"
     )
   }
 
