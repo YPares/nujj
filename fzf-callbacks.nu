@@ -30,42 +30,44 @@ def print-log [width: int, state: record] {
 
 def print-files [state: record, matches: record] {
   if ($matches | is-empty) {
-    print $"--Unkown revision--(char nul)"
+    print $"--Nothing here--(char nul)"
   } else {
-    ( ^jj log -r $matches.commit_id --no-graph
+    let jj_out = (
+      ^jj log -r $matches.commit_id --no-graph
         -T $"self.diff\().files\().map\(|x|
               '(char us)' ++ commit_id.shortest\() ++ '(char us)(char fs)' ++ x.path\() ++ '(char fs)'
             ).join\('(char gs)')"
         --ignore-working-copy
         --at-operation $state.operation
-    )
-  } | tr (char gs) \0
+    ) | tr (char gs) \0 | complete
+    if ($jj_out.stdout | is-empty) {
+      print $"--Nothing here--(char nul)"
+    } else {
+      print $jj_out.stdout
+    }
+  }
 }
 
 def fzf-pos [] {
   $env.FZF_POS? | default 0 | into int
 }
 
-def "main update-list" [
+def --wrapped "main update-list" [
   transition: string
   state_file: path
-  fzf_line_contents: string = ""
+  ...contents: string
 ] {
   mut state = open $state_file
   let width = $env.FZF_COLUMNS? | default (tput cols) | into int
-  let matches = $fzf_line_contents | get-matches
+  let matches = $contents | str join " " | get-matches
   
   match [$state.current_view $transition] {
     [log into] => {
-      $state = $state |
-        update pos_in_log (fzf-pos)
-      let jj_out = print-files $state $matches | complete
-      if ($jj_out.stdout | is-empty) {
-        print-log $width $state # The revision is empty, we stay where we are
-      } else {
-        $state = $state | (update current_view files)
-        print $jj_out.stdout
+      $state = $state | merge {
+        pos_in_log: (fzf-pos)
+        current_view: files
       }
+      print-files $state $matches
     }
     [files back] => {
       $state = $state | (update current_view log)
@@ -75,27 +77,20 @@ def "main update-list" [
       print-log $width $state
     }
     [files _] => {
-      let jj_out = print-files $state $matches | complete
-      if ($jj_out.stdout | is-empty) {
-        # The file list is now empty, we go back
-        $state = $state | (update current_view log)
-        print-log $width $state
-      } else {
-        print $jj_out.stdout
-      }
+      print-files $state $matches
     }
   }
 
   $state | save -f $state_file
 }
 
-def "main preview" [state_file: path, fzf_line_contents: string = ""] {
+def --wrapped "main preview" [state_file: path, ...contents: string] {
   let state = open $state_file
   if ($state.current_view == log) {
     $state | update pos_in_log (fzf-pos) | save -f $state_file
   }
 
-  let matches = $fzf_line_contents | get-matches
+  let matches = $contents | str join " " | get-matches
 
   if ($matches | is-empty) {
     print "--Nothing to show--"
