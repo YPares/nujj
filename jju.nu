@@ -129,22 +129,47 @@ export def watch-diff [folder] {
 const explore_script = [(path self | path dirname) "cat-jj-diff.nu"] | path join
 
 # Uses fzf to show the jj log and to allow to drill into revisions
-export def --wrapped tui [...args] {
-  jj ...$args --color always |
-  ( fzf
-    --ansi --layout reverse --style default --height -1 --no-clear --no-sort --track
-    --preview-window hidden,right,70%,wrap
-    --preview $"nu ($explore_script) diff {} (deltau theme-flags-from-system)"
-    --bind "ctrl-r:change-preview-window(bottom,85%|right,70%)+toggle-preview+toggle-preview" # force preview layout refreshing
-    --bind "enter:toggle-preview"
-    --bind "ctrl-d:preview-half-page-down"
-    --bind "ctrl-u:preview-half-page-up"
-    --bind "page-down:preview-page-down"
-    --bind "page-up:preview-page-up"
-    --bind "esc:cancel"
-    --bind $"left:reload\(jj ($args | cat-args) --color always)+clear-query"
-    --bind $"right:reload\(nu ($explore_script) show-files {})+clear-query"
-  )
+export def tui [
+  --watch (-w): path # Watch the given path and refresh fzf whenever it changes
+  args=[] # Extra JJ args
+] {
+  let reload_cmd = $"reload\(jj ($args | cat-args) --color always)"
+
+  let watcher_data = if ($watch != null) {
+    let fzf_port = port
+    let job_id = job spawn {
+      watch $watch -q {
+        http post $"http://localhost:($fzf_port)" $reload_cmd
+      }
+    }
+    {fzf_port: $fzf_port, job_id: $job_id}
+  } else {
+    {}
+  }
+
+  try {
+    jj ...$args --color always |
+    ( fzf
+      --ansi --layout reverse --style default --no-clear --no-sort --track
+      --preview-window hidden,right,70%,wrap
+      --preview $"nu ($explore_script) diff {} (deltau theme-flags-from-system)"
+      ...(if ($watcher_data.fzf_port? != null) {[--listen $watcher_data.fzf_port]} else {[]})
+      --bind "ctrl-r:change-preview-window(bottom,90%|right,70%)+toggle-preview+toggle-preview" # force preview layout refreshing
+      --bind "enter:toggle-preview"
+      --bind "ctrl-d:preview-half-page-down"
+      --bind "ctrl-u:preview-half-page-up"
+      --bind "ctrl-e:preview-half-page-up"
+      --bind "page-down:preview-page-down"
+      --bind "page-up:preview-page-up"
+      --bind "esc:cancel"
+      --bind $"left:($reload_cmd)+clear-query"
+      --bind $"right:reload\(nu ($explore_script) show-files {})+clear-query"
+    )
+  }
+
+  if ($watcher_data.job_id? != null) {
+    job kill $watcher_data.job_id
+  }
 }
 
 # Wraps jj log in delta
