@@ -61,18 +61,15 @@ export def main [
       [change_id description "author.name()" "author.timestamp()"]
     } else {
       $columns
-    } | each {
-      match $in {
-        "description" => "description.lines().join(';')"
-        _ => $in
-      }
     }
-  let parser = $columns | each { $"{($in | to-group-name)}" } | str join (char rs)
+  let parser = $columns | each { $"{($in | to-group-name)}" } | str join (char fs)
 
   ( jj log ...(if $revset != null {[-r $revset]} else {[]})
        --no-graph
-       -T $"($columns | str join $"++'(char rs)'++") ++ '\n'"
+       -T $"($columns | str join $"++'(char fs)'++") ++ '(char rs)'"
   ) |
+  str trim --right --char (char rs) |
+  split row (char rs) |
   parse $parser
 }
 
