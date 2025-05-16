@@ -8,7 +8,7 @@ export def grep [
   let dir = $dir | path expand
   let line_parser = '^\s+(?<line>[0-9]+)[^\n]+'
   let regex = $"($line_parser)($pattern | str replace ' ' '\s+')"
-  glob $"\(?i)($dir)/**/($files)" |
+  glob -D $"\(?i)($dir)/**/($files)" |
   each { |file|
     open $file | nl -ba |
     parse -r $regex |

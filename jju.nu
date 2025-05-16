@@ -1,22 +1,28 @@
-# Add a parent to a change
-export def addp [
-  --revision (-r): string = "@"
-  ...parents: string
-] {
-  jj rebase -s $revision -d $"all:($revision)- | ($parents | str join ' | ')"
+def list-to-revset [] {
+  let list = $in
+  if ($list | is-empty) {
+    "none()"
+  } else {
+    $"\(($list | str join '|'))"
+  }
 }
 
-# Remove a parent from a change
-export def rmp [
+# Add/remove parent(s) to a change
+export def --wrapped reparent [
   --revision (-r): string = "@"
   ...parents: string
 ] {
-  jj rebase -s $revision -d $"all:($revision)- & ~\(($parents | str join ' | '))"
+  let added = $parents | parse "+{rev}" | get rev
+  let removed = $parents | parse "-{rev}" | get rev
+ 
+  ( jj rebase -s $revision
+       -d $"all:\(($revision)- | ($added | list-to-revset)) & ~($removed | list-to-revset)"
+  )
 }
 
 # Select an operation and restore the working copy back to it
 export def back [
-  num_ops: number = 10
+  num_ops: number = 15
 ] {
   clear
   let op = (
@@ -51,12 +57,16 @@ export def main [
   --revset (-r): string
   ...columns: string
 ] {
-  let columns = $columns | each {
-    match $in {
-      "description" => "description.lines().join(';')"
-      _ => $in
+  let columns = if ($columns | is-empty) {
+      [change_id description "author.name()" "author.timestamp()"]
+    } else {
+      $columns
+    } | each {
+      match $in {
+        "description" => "description.lines().join(';')"
+        _ => $in
+      }
     }
-  }
   let parser = $columns | each { $"{($in | to-group-name)}" } | str join (char rs)
 
   ( jj log ...(if $revset != null {[-r $revset]} else {[]})
@@ -73,4 +83,12 @@ export def bookmarks-to-table [
     rename -c {author_name: author, author_timestamp: date} |
     update bookmarks {split row " " | parse "{branch}@{remote}"} | flatten --all |
     update date {into datetime}
+}
+
+# Commit and advance the branches
+export def ci [
+  --message (-m): string
+] {
+  jj commit ...(if $message != null {[-m $message]} else {[]})
+  jj bookmark move --from @- --to @
 }
