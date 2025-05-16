@@ -15,8 +15,7 @@ def --wrapped cmd [
   $"($fzf_command)\(nu -n ($fzf_callbacks) ($args | str join ' '))"
 }
 
-#
-# JJiles. A JJ Watcher.
+# # JJiles. A JJ Watcher.
 #
 # Shows an interactive and auto-updating jj log that allows you to drill down into revisions.
 # By default, it will refresh everytime a jj command modifies the repository.
@@ -29,14 +28,22 @@ def --wrapped cmd [
 # Additionally, JJiles can be told to automatically snapshot the working copy and refresh
 # upon changes to a local folder with --watch.
 #
-# Key bindings:
+# # Key bindings
+# 
 # - Return: open/close the preview panel (showing the diff of a revision)
 # - Right & left arrows: go into/out of a revision (to preview only specific files)
 # - Ctrl+r: place the preview on the right (repeat to change preview window size)
 # - Ctrl+b: put the preview on the bottom (repeat to change preview window size)
 # - PageUp & PageDown: scroll through the preview panel (full page)
 # - Ctrl+d & Ctrl+u: scroll through the preview panel (half page)
+#
+# # Notes about using custom JJ log templates
 # 
+# JJiles will expose to your JJ templates a few config values they can use via the `config(...)` jj template function:
+# - `width`: will be set to the width of the terminal window running jj log
+# - `desc-len`: will be set to half this width (as JJ template language does not support basic arithmetic for now),
+#   to give an acceptable size at which to truncate commit description headers:
+#   `truncate_end(config("desc-len").as_integer(), description.first_line())`
 export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log

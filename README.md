@@ -17,7 +17,8 @@ or to any autoloaded nushell script.
 - `jjiles`: an interactive `jj log` with `fzf` (à la [`jj-fzf`](https://github.com/tim-janik/jj-fzf)),
   with custom jj log templates support, auto-refresh, adaptive diff layout, system theme detection
   (which will also work in [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
-  and syntax-highlighting via [`delta`](https://github.com/dandavison/delta)
+  and syntax-highlighting via [`delta`](https://github.com/dandavison/delta).
+  Run `jjiles --help` for more info
 
 ## Dependencies
 

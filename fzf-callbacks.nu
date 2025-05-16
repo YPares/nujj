@@ -21,6 +21,7 @@ def print-log [width: int, state: record] {
       --revisions $state.revisions
       --color always
       --template $state.log_template
+      --config $"width=($width)"
       --config $"desc-len=($width / 2 | into int)"
       --ignore-working-copy
       --at-operation $state.selected_operation
