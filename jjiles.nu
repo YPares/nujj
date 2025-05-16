@@ -59,7 +59,8 @@ export def --wrapped main [
     # An operation (from 'jj op log') at which to browse your repo.
     # Will deactivate the .jj folder watching if given.
   --watch (-w): path # The folder to watch for changes. Cannot be used with --freeze-at-op
-  --hide-search (-S) # The fuzzy finder is hidden by default
+  --hide-search (-S) # The finder is hidden by default
+  --fuzzy # Use fuzzy finding instead of exact match
   ...args # Extra jj args
 ] {
   if $help {
@@ -161,6 +162,7 @@ export def --wrapped main [
       --delimiter (char us) --with-nth "1,3"
       --layout reverse --no-sort --track
       ...(lcond $hide_search [--no-input])
+      ...(lcond (not $fuzzy) [--exact])
 
       --style minimal
       --ansi --color $color
