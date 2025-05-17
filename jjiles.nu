@@ -2,9 +2,17 @@ use ./deltau.nu
 
 const fzf_callbacks = [(path self | path dirname) "fzf-callbacks.nu"] | path join
 
-def to-fzf-bindings [dict] {
-  $dict | transpose key vals | each {|x|
-    [--bind $"($x.key):($x.vals | str join "+")"]
+def flatten-bindings-record []: record -> table<key: string, action: string> {
+  transpose keys action |
+    update keys { split row "," } |
+    flatten keys |
+    rename -c {keys: key} |
+    update action {str join "+"}
+}
+
+def to-fzf-bindings []: table<key: string, action: string> -> list<string> {
+  each {|row|
+    [--bind $"($row.key):($row.action)"]
   } | flatten
 }
 
@@ -212,7 +220,7 @@ export def --wrapped main [
 
       ...(lcond ($jj_watcher_id != null) [--listen $fzf_port])
 
-      ...(to-fzf-bindings {
+      ...({
 
         "left,ctrl-h": [
           (cmd update-list back $state_file "{n}" "{}")
@@ -241,7 +249,7 @@ export def --wrapped main [
 
         ...$config.bindings.fzf
 
-      })
+      } | flatten-bindings-record | to-fzf-bindings)
     )
   }
 
