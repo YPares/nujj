@@ -2,23 +2,6 @@ use ./deltau.nu
 
 const fzf_callbacks = [(path self | path dirname) "fzf-callbacks.nu"] | path join
 
-def to-fzf-bindings [dict] {
-  $dict | transpose key vals | each {|x|
-    [--bind $"($x.key):($x.vals | str join "+")"]
-  } | flatten
-}
-
-def --wrapped cmd [
-  --fzf-command (-c): string = "reload"
-  ...args: string
-]: nothing -> string {
-  $"($fzf_command)\(nu -n ($fzf_callbacks) ($args | str join ' '))"
-}
-
-def lcond [bool list] {
-  if $bool {$list} else {[]}
-}
-
 const default_config = {
   interface: {
     menu_position: top
@@ -35,6 +18,37 @@ const default_config = {
       ctrl-d:           preview-half-page-down
       ctrl-u:           preview-half-page-up
     }
+  }
+}
+
+def lcond [bool list] {
+  if $bool {$list} else {[]}
+}
+
+def --wrapped cmd [
+  --fzf-command (-c): string = "reload"
+  ...args: string
+]: nothing -> string {
+  $"($fzf_command)\(nu -n ($fzf_callbacks) ($args | str join ' '))"
+}
+
+def used-keys []: record -> table<key: string> {
+  columns | each { split row "," } | flatten | wrap key
+}
+
+def to-fzf-bindings []: record -> list<string> {
+  transpose keys actions | each {|row|
+    [--bind $"($row.keys):($row.actions | str join "+")"]
+  } | flatten
+}
+
+# Runs a list of finalizers and optionally (re)throws an exception
+def finalize [finalizers: list<closure>, exc?] {
+  for fin in $finalizers {
+    do $fin
+  }
+  if ($exc != null) {
+    error make (if (($exc | describe) == "string") {{msg: $exc}} else {$exc})
   }
 }
 
@@ -85,6 +99,9 @@ export def --wrapped main [
   --output-default-config # Output the default config
   ...args # Extra jj args
 ] {
+  # Will contain closures that release the resources acquired so far:
+  mut finalizers: list<closure> = []
+
   if $output_default_config {
     return {jjiles: $default_config}
   }
@@ -132,6 +149,8 @@ export def --wrapped main [
   }
 
   let tmp_dir = mktemp --directory
+  $finalizers = {rm -rf $tmp_dir} | append $finalizers
+  
   let state_file = [$tmp_dir state.nuon] | path join
 
   {
@@ -148,31 +167,32 @@ export def --wrapped main [
 
   let jj_watcher_id = if ($freeze_at_op == null) {
     ^jj debug snapshot
-    job spawn {
+    let id = job spawn {
       watch $"(^jj root)/.jj" -q {
         ( cmd update-list refresh $state_file "{n}" "{}" |
             http post $"http://localhost:($fzf_port)"
         )
       }
     }
+    $finalizers = {job kill $id} | append $finalizers
+    $id
   }
 
   let extra_watcher_id = if ($watch != null) {
     if ($freeze_at_op != null) {
-      rm -rf $tmp_dir
-      error make {msg: "--watch cannot be used with --freeze-at-op"}
+      finalize $finalizers "--watch cannot be used with --freeze-at-op"
     }
     if not ($watch | path exists) {
-      job kill $jj_watcher_id
-      rm -rf $tmp_dir
-      error make {msg: $"--watch: ($watch) does not exist"}
+      finalize $finalizers $"--watch: ($watch) does not exist"
     }
-    job spawn {
+    let id = job spawn {
       watch $watch -q {
         ^jj debug snapshot
         # Will update the .jj folder and therefore trigger the jj watcher
       }
     }
+    $finalizers = {job kill $id} | append $finalizers
+    $id
   }
 
   let color = match (deltau theme-flags) {
@@ -181,7 +201,39 @@ export def --wrapped main [
     _ => "16"
   }
 
-  try {
+  let main_bindings = {
+    "left,ctrl-h": [
+      (cmd update-list back $state_file "{n}" "{}")
+      clear-query
+      ...(lcond $hide_search [hide-input])
+    ]
+    "right,ctrl-l": [
+      (cmd update-list into $state_file "{n}" "{}")
+      clear-query
+      ...(lcond $hide_search [hide-input])
+    ]
+    load: (cmd -c transform on-load-finished $state_file)
+    ctrl-r: [
+      "change-preview-window(right,80%|right,50%)"
+      show-header
+      refresh-preview
+    ]
+    ctrl-b: [
+      "change-preview-window(bottom,50%|bottom,90%)"
+      hide-header
+      refresh-preview
+    ]
+
+    "ctrl-f,f3":     [clear-query, toggle-input]
+    enter:           [toggle-preview, show-header]
+  }
+
+  let conflicting_keys = $main_bindings | used-keys | join ($config.bindings.fzf | used-keys) key
+  if (not ($conflicting_keys | is-empty)) {
+    finalize $finalizers $"Keybindings for ($conflicting_keys | get key) cannot be overriden by user config"
+  }
+
+  let exc = try {
     ^nu -n $fzf_callbacks update-list refresh $state_file |
     ( ^fzf
       --read0
@@ -211,46 +263,11 @@ export def --wrapped main [
 
       ...(lcond ($jj_watcher_id != null) [--listen $fzf_port])
 
-      ...(to-fzf-bindings {
-
-        "left,ctrl-h": [
-          (cmd update-list back $state_file "{n}" "{}")
-          clear-query
-          ...(lcond $hide_search [hide-input])
-        ]
-        "right,ctrl-l": [
-          (cmd update-list into $state_file "{n}" "{}")
-          clear-query
-          ...(lcond $hide_search [hide-input])
-        ]
-        load: (cmd -c transform on-load-finished $state_file)
-        ctrl-r: [
-          "change-preview-window(right,80%|right,50%)"
-          show-header
-          refresh-preview
-        ]
-        ctrl-b: [
-          "change-preview-window(bottom,50%|bottom,90%)"
-          hide-header
-          refresh-preview
-        ]
-
-        "ctrl-f,f3":     [clear-query, toggle-input]
-        enter:           [toggle-preview, show-header]
-
-        ...$config.bindings.fzf
-
-      })
+      ...($main_bindings | merge $config.bindings.fzf | to-fzf-bindings)
     )
-  }
-
-  if ($extra_watcher_id != null) {
-    job kill $extra_watcher_id
-  }
-
-  if ($jj_watcher_id != null) {
-    job kill $jj_watcher_id
-  }
-
-  rm -rf $tmp_dir
+  } catch {$in}
+  ( finalize $finalizers
+      (if ($exc.exit_code? != 130) { $exc })
+      # fzf being Ctrl-C'd isn't an error for us. Thus we only rethrow other errors
+  )
 }
