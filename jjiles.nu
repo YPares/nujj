@@ -147,6 +147,7 @@ export def --wrapped main [
   let fzf_port = port
 
   let jj_watcher_id = if ($freeze_at_op == null) {
+    ^jj debug snapshot
     job spawn {
       watch $"(^jj root)/.jj" -q {
         ( cmd update-list refresh $state_file "{n}" "{}" |
@@ -181,8 +182,6 @@ export def --wrapped main [
   }
 
   try {
-    ^jj debug snapshot
-  
     ^nu -n $fzf_callbacks update-list refresh $state_file |
     ( ^fzf
       --read0
