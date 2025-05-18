@@ -16,18 +16,42 @@ def get-matches [
   ] | into record
 }
 
-def print-rev-log [width: int, state: record] {
-  ( ^jj ...$state.jj_log_extra_args
+# Replace the (char gs) inserted at the end of the template
+# by a NULL that fzf will use as a multi-line record separator
+def replace-template-ending [] {
+  str replace -ra $"\\s*(char gs)\\s*" (char gs) |
+  tr (char gs) \0
+}
+
+def print-oplog [width: int, state: record] {
+  if ($state.watched_files | is-not-empty) {
+    ( print -n
+        $"(ansi default_reverse)♡(ansi reset)  (char us)@(char us)"
+        $"(ansi yellow)Live current operation(ansi reset)\n"
+        $"│  (ansi default_italic)This operation will be updated whenever any of"
+        $" ($state.watched_files | each {$'`($in)`'} | str join ', ') is modified(ansi reset)\n"
+        $"│(char nul)"
+    )
+  }
+  ( ^jj op log
+      --color always
+      --template $state.oplog_template
+      --config $"width=($width)"
+      --config $"desc-len=($width / 2 | into int)"
+      --ignore-working-copy
+  ) | replace-template-ending
+}
+
+def print-revlog [width: int, state: record] {
+  ( ^jj log ...$state.jj_revlog_extra_args
       --revisions $state.revset
       --color always
-      --template $state.log_template
+      --template $state.revlog_template
       --config $"width=($width)"
       --config $"desc-len=($width / 2 | into int)"
       --ignore-working-copy
       --at-operation $state.selected_operation_id
-  ) |
-  str replace -ra $"\\s*(char gs)\\s*" (char gs) |
-  tr (char gs) \0
+  ) | replace-template-ending
 }
 
 def print-files [state: record, change_id: string] {
@@ -57,39 +81,57 @@ def --wrapped "main update-list" [
   let width = $env.FZF_COLUMNS? | default (tput cols) | into int
   let matches = $contents | str join " " | get-matches
   
+  # We store the current position of the cursor:
   let cell = match $state.current_view {
-    "log" => [pos_in_rev_log $state.selected_operation_id] 
-    "files" => [pos_in_file_list $state.selected_change_id]
+    "oplog" => [pos_in_oplog]
+    "revlog" => [pos_in_revlog $state.selected_operation_id] 
+    "files" => [pos_in_files $state.selected_change_id]
   }
   if $cell != null {
     $state = $state | upsert ($cell | into cell-path) ($fzf_pos + 1)
   }
   
-  match [$state.current_view $transition $matches] {
-    # From rev log into files:
-    [log into {change_id: $change_id}] => {
-      $state = $state | merge {
-        current_view:       files
+  # We update the state to perform the transition (if any happened):
+  let updates = match [$state.current_view $transition $matches] {
+    # From oplog into revlog:
+    [oplog into {change_id: $change_id}] => {
+      {
+        current_view: revlog
+        selected_operation_id: $change_id
+      }
+    }
+    # From revlog back to oplog:
+    [revlog back _] => {
+      {current_view: oplog}
+    }
+    # From revlog into files:
+    [revlog into {change_id: $change_id}] => {
+      {
+        current_view: files
         selected_change_id: $change_id
       }
-      print-files $state $change_id
     }
-    # Rev log refresh:
-    [log _ _] => {
-      print-rev-log $width $state
-    }
-    # From files back to rev log:
+    # From files back to revlog:
     [files back _] => {
-      $state = $state | (update current_view log)
-      print-rev-log $width $state
-    }
-    # Files refresh:
-    [files _ _] => {
-      print-files $state $state.selected_change_id
+      {current_view: revlog}
     }
   }
 
+  $state = $state | merge ($updates | default {})
   $state | save -f $state_file
+
+  # We print the new view (or the refreshed current view) for fzf to parse:
+  match $state.current_view {
+    "oplog" => {
+      print-oplog $width $state
+    }
+    "revlog" => {
+      print-revlog $width $state
+    }
+    "files" => {
+      print-files $state $state.selected_change_id
+    }
+  }
 }
 
 def --wrapped "main preview" [state_file: path, ...contents: string] {
@@ -155,16 +197,17 @@ def "main on-load-finished" [state_file: path] {
   let state = open $state_file
 
   let pos = match $state.current_view? {
-    "log" => ($state.pos_in_rev_log | get -i $state.selected_operation_id | default 0)
-    "files" => ($state.pos_in_file_list | get -i $state.selected_change_id | default 0)
+    "oplog" => $state.pos_in_oplog
+    "revlog" => ($state.pos_in_revlog | get -i $state.selected_operation_id | default 0)
+    "files" => ($state.pos_in_files | get -i $state.selected_change_id | default 0)
     _ => 0
   }
 
   let breadcrumbs = [
-    [view   menu      prefix color   value                        ];
-    [op_log "Op log"  Op     blue    $state.selected_operation_id?]
-    [log    "Rev log" Rev    magenta $state.selected_change_id?   ]
-    [files  Files     File   yellow  null                         ]
+    [view   menu   prefix color   value                        ];
+    [oplog  OpLog  Op     blue    $state.selected_operation_id?]
+    [revlog RevLog Rev    magenta $state.selected_change_id?   ]
+    [files  Files  File   yellow  null                         ]
   ]
 
   let before = $breadcrumbs | take until {$in.view == $state.current_view?}

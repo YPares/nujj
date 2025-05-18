@@ -52,6 +52,24 @@ def finalize [finalizers: list<closure>, exc?] {
   }
 }
 
+# (char us) will be treated as the fzf field delimiter.
+# 
+# Eg. each "line" of the revlog will therefore be seen by fzf as:
+# graph characters | change_id | user log template (char gs)
+# (with '|' representing (char us))
+# so that fzf can only show fields 1 & 3 to the user and still
+# extract the change_id
+# 
+# We terminate the template by (char gs) because JJ cannot deal
+# it seems with templates containing NULL
+def mktemplate [...args] {
+  $args |
+    each {[$"'(char us)'" $in]} |
+    flatten |
+    append [$"'(char gs)'"] | 
+    str join "++"
+}
+
 # # JJiles. A JJ Watcher.
 #
 # Shows an interactive and auto-updating jj log that allows you to drill down into revisions.
@@ -90,20 +108,38 @@ export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log
   --template (-T): string # The alias of the jj log template to use
-  --freeze-at-op (-f): string
+  --at-operation: string
     # An operation (from 'jj op log') at which to browse your repo.
     # Will deactivate the .jj folder watching if given.
+  --at-op: string # Alias for --at-operation (to match JJ CLI args)
   --watch (-w): path # The folder to watch for changes. Cannot be used with --freeze-at-op
   --hide-search (-S) # The finder is hidden by default
   --fuzzy # Use fuzzy finding instead of exact match
   --output-default-config # Output the default config
-  ...args # Extra jj args
+  ...args # Extra args
 ] {
-  # Will contain closures that release the resources acquired so far:
-  mut finalizers: list<closure> = []
-
   if $output_default_config {
     return {jjiles: $default_config}
+  }
+  
+  # Will contain closures that release all the resources acquired so far:
+  mut finalizers: list<closure> = []
+
+  mut watched_files: list<path> = []
+
+  let init_view = match $args {
+    [op log] => {
+      {view: "oplog", extra_args: []}
+    }
+    [op log ..$_args] => {
+      finalize $finalizers "Passing `jj op log` extra args is not supported"
+    }
+    [log ..$rest] => {
+      {view: "revlog", extra_args: $rest}
+    }
+    _ => {
+      {view: "revlog", extra_args: $args}
+    }
   }
 
   # We read the user config:
@@ -111,6 +147,14 @@ export def --wrapped main [
     ^jj config list jjiles e> /dev/null | from toml | get -i jjiles | default {}
   )
 
+  # We retrieve the user op log template:
+  let oplog_template = ^jj config get templates.op_log
+  # We retrieve the user revlog template:
+  let revlog_template = if ($template == null) {
+    ^jj config get templates.log
+  } else {
+    $template
+  }
   # We retrieve the user default log revset:
   let revisions = if ($revisions == null) {
     ^jj config get revsets.log
@@ -118,29 +162,12 @@ export def --wrapped main [
     $revisions
   }
 
-  # We retrieve the user template:
-  let template = if ($template == null) {
-    ^jj config get templates.log
-  } else {
-    $template
-  }
+  # We generate from the user oplog/revlog templates new templates
+  # from which fzf can reliably extract the data it needs.
+  let oplog_template = mktemplate "id.short()" $oplog_template
+  let revlog_template = mktemplate "change_id.shortest(8)" $revlog_template
 
-  # We generate from it a new template from which fzf can reliably extract the
-  # data it needs:
-  let template = [
-    $"'(char us)'" # (char us) will be treated as the fzf field delimiter.
-                   # Each "line" of the log will therefore be seen by fzf as:
-                   # graph characters | change_id | user log template (char gs)
-                   # (with '|' representing (char us))
-                   # so that fzf can only show fields 1 & 3 to the user and still
-                   # extract the change_id
-    "change_id.shortest(8)"
-    $"'(char us)'"
-    $template
-    $"'(char gs)'" # We terminate the template by (char gs) because JJ cannot deal
-                   # it seems with templates containing NULL
-  ] | str join " ++ "
-
+  let freeze_at_op = $at_operation | default $at_op
   let operation = match $freeze_at_op {
     null => "@"
     _ => {
@@ -154,22 +181,27 @@ export def --wrapped main [
   let state_file = [$tmp_dir state.nuon] | path join
 
   {
+    watched_files: []
+    oplog_template: $oplog_template
+    revlog_template: $revlog_template
+    jj_revlog_extra_args: $init_view.extra_args
     revset: $revisions
-    log_template: $template
-    jj_log_extra_args: $args
-    current_view: log
+    current_view: $init_view.view
+    pos_in_oplog: 0
     selected_operation_id: $operation
-    pos_in_rev_log: {} # indexed by operation_id
+    pos_in_revlog: {} # indexed by operation_id
     selected_change_id: null
-    pos_in_file_list: {} # indexed by change_id
+    pos_in_files: {} # indexed by change_id
   } | save $state_file
   
   let fzf_port = port
   
   let jj_watcher_id = if ($freeze_at_op == null) {
+    let jj_folder = $"(^jj root)/.jj"
+    $watched_files = $jj_folder | append $watched_files
     ^jj debug snapshot
     let id = job spawn {
-      watch $"(^jj root)/.jj" -q {
+      watch $jj_folder -q {
         ( cmd update-list refresh $state_file "{n}" "{}" |
             http post $"http://localhost:($fzf_port)"
         )
@@ -186,6 +218,7 @@ export def --wrapped main [
     if not ($watch | path exists) {
       finalize $finalizers $"--watch: ($watch) does not exist"
     }
+    $watched_files = $watch | append $watched_files
     let id = job spawn {
       watch $watch -q {
         ^jj debug snapshot
@@ -231,9 +264,13 @@ export def --wrapped main [
   }
 
   let conflicting_keys = $main_bindings | used-keys | join ($config.bindings.fzf | used-keys) key
-  if (not ($conflicting_keys | is-empty)) {
+  if ($conflicting_keys | is-not-empty) {
     finalize $finalizers $"Keybindings for ($conflicting_keys | get key) cannot be overriden by user config"
   }
+
+  open $state_file |
+    update watched_files ($watched_files | path expand | path relative-to ("." | path expand)) |
+    save -f $state_file
 
   let exc = try {
     ^nu -n $fzf_callbacks update-list refresh $state_file |
