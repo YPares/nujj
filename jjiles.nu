@@ -74,12 +74,6 @@ def mktemplate [...args] {
 #
 # Shows an interactive and auto-updating jj log that allows you to drill down into revisions.
 # By default, it will refresh everytime a jj command modifies the repository.
-#
-# Extra positional args will be passed straight to jj.
-# The first positional arg can be 'evolog', since 'jj log' and 'evolog' use the same
-# templates and their outputs can be parsed by fzf in exactly the same manner.
-# Other JJ subcommands are not supported, do not use them with this wrapper.
-# 
 # Additionally, JJiles can be told to automatically snapshot the working copy and refresh
 # upon changes to a local folder with --watch.
 #
@@ -103,7 +97,6 @@ def mktemplate [...args] {
 #   `truncate_end(config("desc-len").as_integer(), description.first_line())`
 #
 # JJiles can be configured via a `[jjiles]` section in your ~/.config/jj/config.toml
-# For now, only `[jjiles.bindings.fzf]` is used
 export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log
@@ -111,12 +104,12 @@ export def --wrapped main [
   --at-operation: string
     # An operation (from 'jj op log') at which to browse your repo.
     # Will deactivate the .jj folder watching if given.
-  --at-op: string # Alias for --at-operation (to match JJ CLI args)
-  --watch (-w): path # The folder to watch for changes. Cannot be used with --freeze-at-op
-  --hide-search (-S) # The finder is hidden by default
+  --at-op: string # Alias for --at-operation (to match jj CLI args)
+  --watch (-w): path # A folder to watch for changes. Cannot be used with --at-operation
+  --hide-search (-S) # The search bar is hidden by default
   --fuzzy # Use fuzzy finding instead of exact match
   --output-default-config # Output the default config
-  ...args # Extra args
+  ...args # Extra args to pass to 'jj log'
 ] {
   if $output_default_config {
     return {jjiles: $default_config}
