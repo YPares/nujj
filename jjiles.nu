@@ -21,8 +21,8 @@ const default_config = {
   }
 }
 
-def lcond [bool list] {
-  if $bool {$list} else {[]}
+def --wrapped cond [bool ...flags] {
+  if $bool {$flags} else {[]}
 }
 
 def --wrapped cmd [
@@ -206,12 +206,12 @@ export def --wrapped main [
     "left,ctrl-h": [
       (cmd update-list back $state_file "{n}" "{}")
       clear-query
-      ...(lcond $hide_search [hide-input])
+      ...(cond $hide_search hide-input)
     ]
     "right,ctrl-l": [
       (cmd update-list into $state_file "{n}" "{}")
       clear-query
-      ...(lcond $hide_search [hide-input])
+      ...(cond $hide_search hide-input)
     ]
     load: (cmd -c transform on-load-finished $state_file)
     
@@ -245,8 +245,8 @@ export def --wrapped main [
         "bottom" => "reverse-list"
       })
       --no-sort --track
-      ...(lcond $hide_search [--no-input])
-      ...(lcond (not $fuzzy) [--exact])
+      ...(cond $hide_search --no-input)
+      ...(cond (not $fuzzy) --exact)
 
       --style minimal
       --ansi --color $color
@@ -263,7 +263,7 @@ export def --wrapped main [
       --preview-window "right,50%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
 
-      ...(lcond ($jj_watcher_id != null) [--listen $fzf_port])
+      ...(cond ($jj_watcher_id != null) --listen $fzf_port)
 
       ...($main_bindings | merge $config.bindings.fzf | to-fzf-bindings)
     )
