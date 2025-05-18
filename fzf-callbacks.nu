@@ -134,18 +134,16 @@ def --wrapped "main update-list" [
   }
 }
 
-def --wrapped "main preview" [state_file: path, ...contents: string] {
-  let state = open $state_file
+def preview-op [_width _state matches] {
+  ( ^jj op show
+      $matches.change_id
+      --no-graph --patch --git
+      --color always
+      --ignore-working-copy
+  ) | deltau wrapper --paging never
+}
 
-  let width = $env.FZF_PREVIEW_COLUMNS? | default "80" | into int
-
-  let matches = $contents | str join " " | get-matches
-
-  if ($matches.change_id? == null) {
-    print $"(ansi default_italic)\(Nothing to show)(ansi reset)"
-    return
-  }
-  
+def preview-rev-or-file [width state matches] {
   let bookmarks = (
     ^jj log -r $"($matches.change_id):: & \(bookmarks\() | remote_bookmarks\())"
       -T 'bookmarks ++ " "'
@@ -190,7 +188,25 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
       ...(if $matches.file? != null {[$matches.file]} else {[]})
       --ignore-working-copy
       --at-operation $state.selected_operation_id
-  ) | deltau wrapper --paging never 
+  ) | deltau wrapper --paging never
+}
+
+def --wrapped "main preview" [state_file: path, ...contents: string] {
+  let state = open $state_file
+  let width = $env.FZF_PREVIEW_COLUMNS? | default "80" | into int
+  let matches = $contents | str join " " | get-matches
+
+  match [$state.current_view $matches.change_id?] {
+    [_ null] => {
+      print $"(ansi default_italic)\(Nothing to show)(ansi reset)"
+    }
+    [oplog _] => {
+      preview-op $width $state $matches
+    }
+    _ => {
+      preview-rev-or-file $width $state $matches
+    }
+  }
 }
 
 def "main on-load-finished" [state_file: path] {
