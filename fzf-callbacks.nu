@@ -16,7 +16,7 @@ def get-matches [
   ] | into record
 }
 
-def print-log [width: int, state: record] {
+def print-rev-log [width: int, state: record] {
   ( ^jj ...$state.jj_log_extra_args
       --revisions $state.revset
       --color always
@@ -24,7 +24,7 @@ def print-log [width: int, state: record] {
       --config $"width=($width)"
       --config $"desc-len=($width / 2 | into int)"
       --ignore-working-copy
-      --at-operation $state.selected_operation
+      --at-operation $state.selected_operation_id
   ) |
   str replace -ra $"\\s*(char gs)\\s*" (char gs) |
   tr (char gs) \0
@@ -41,7 +41,7 @@ def print-files [state: record, matches: record] {
               '● (char fs)(ansi yellow)' ++ x.path\() ++ '(ansi reset)(char fs) [' ++ x.status\() ++ ']'
             ).join\('(char gs)')"
         --ignore-working-copy
-        --at-operation $state.selected_operation
+        --at-operation $state.selected_operation_id
     ) | tr (char gs) \0 | complete
     if ($jj_out.stdout | is-empty) {
       print $"(ansi default_italic)\(Nothing here)(ansi reset)(char nul)"
@@ -61,10 +61,12 @@ def --wrapped "main update-list" [
   let width = $env.FZF_COLUMNS? | default (tput cols) | into int
   let matches = $contents | str join " " | get-matches
   
-  match $state.current_view {
-    "log" => {
-      $state = $state | update pos_in_rev_log ($fzf_pos + 1)
-    }
+  let cell = match $state.current_view {
+    "log" => [pos_in_rev_log $state.selected_operation_id] 
+    "files" => [pos_in_file_list $state.selected_change_id]
+  }
+  if $cell != null {
+    $state = $state | upsert ($cell | into cell-path) ($fzf_pos + 1)
   }
   
   match [$state.current_view $transition] {
@@ -77,10 +79,10 @@ def --wrapped "main update-list" [
     }
     [files back] => {
       $state = $state | (update current_view log)
-      print-log $width $state
+      print-rev-log $width $state
     }
     [log _] => {
-      print-log $width $state
+      print-rev-log $width $state
     }
     [files _] => {
       print-files $state $matches
@@ -106,7 +108,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
         --no-graph
         --color always
         --ignore-working-copy
-        --at-operation $state.selected_operation
+        --at-operation $state.selected_operation_id
     ) | complete
     let rev_infos = (
       ^jj log -r $matches.change_id
@@ -116,7 +118,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
         --no-graph
         --color always
         --ignore-working-copy
-        --at-operation $state.selected_operation
+        --at-operation $state.selected_operation_id
       ) | lines
     let message = $rev_infos | slice 2.. | str join "\n" | str trim
     let message = if ($message | is-empty) {"(no description)"} else {$message}
@@ -136,14 +138,14 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
         "┌"
         ...($title | append $message_rest | each {$"│ ($in)"})
         "└"
-        $"($rev_infos.1) file\(s) modified"
+        $"\(($rev_infos.1) file\(s) modified)"
         ""
     )
     ( ^jj diff -r $matches.change_id --color always
         --git
         ...(if $matches.file? != null {[$matches.file]} else {[]})
         --ignore-working-copy
-        --at-operation $state.selected_operation
+        --at-operation $state.selected_operation_id
     ) | deltau wrapper --paging never 
   }
 }
@@ -152,15 +154,16 @@ def "main on-load-finished" [state_file: path] {
   let state = open $state_file
 
   let pos = match $state.current_view? {
-    "log" => ($state.pos_in_rev_log? | default 0)
+    "log" => ($state.pos_in_rev_log | get -i $state.selected_operation_id | default 0)
+    "files" => ($state.pos_in_file_list | get -i $state.selected_change_id | default 0)
     _ => 0
   }
 
   let breadcrumbs = [
-    [view   menu      prefix color   value                     ];
-    [op_log "Op log"  Op     blue    $state.selected_operation?]
-    [log    "Rev log" Rev    magenta $state.selected_change_id?]
-    [files  Files     File   yellow  null                      ]
+    [view   menu      prefix color   value                        ];
+    [op_log "Op log"  Op     blue    $state.selected_operation_id?]
+    [log    "Rev log" Rev    magenta $state.selected_change_id?   ]
+    [files  Files     File   yellow  null                         ]
   ]
 
   let before = $breadcrumbs | take until {$in.view == $state.current_view?}

@@ -74,7 +74,7 @@ def finalize [finalizers: list<closure>, exc?] {
 # - Ctrl+b: put the preview on the bottom (repeat to change preview window size)
 # - Ctrl+q: exit immediately
 #
-# Other key bindings are rebindable via the JJ config file (see --output-default-config)
+# Other key bindings are rebindable via the JJ config file (see --output-default-config).
 #
 # # Notes about using custom JJ log templates
 # 
@@ -158,13 +158,14 @@ export def --wrapped main [
     log_template: $template
     jj_log_extra_args: $args
     current_view: log
-    selected_operation: $operation
-    pos_in_rev_log: 0
+    selected_operation_id: $operation
+    pos_in_rev_log: {} # indexed by operation_id
     selected_change_id: null
+    pos_in_file_list: {} # indexed by change_id
   } | save $state_file
   
   let fzf_port = port
-
+  
   let jj_watcher_id = if ($freeze_at_op == null) {
     ^jj debug snapshot
     let id = job spawn {
@@ -213,6 +214,7 @@ export def --wrapped main [
       ...(lcond $hide_search [hide-input])
     ]
     load: (cmd -c transform on-load-finished $state_file)
+    
     ctrl-r: [
       "change-preview-window(right,80%|right,50%)"
       show-header
