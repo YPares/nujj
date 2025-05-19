@@ -66,9 +66,10 @@ def print-files [state: record, change_id: string] {
       --at-operation $state.selected_operation_id
   ) | tr (char gs) \0 | complete
   if ($jj_out.stdout | is-empty) {
-    print $"(ansi default_italic)\(Nothing here)(ansi reset)(char nul)"
+    false
   } else {
     print $jj_out.stdout
+    true
   }
 }
 
@@ -130,7 +131,11 @@ def --wrapped "main update-list" [
       print-revlog $width $state
     }
     "files" => {
-      print-files $state $state.selected_change_id
+      if (not (print-files $state $state.selected_change_id)) {
+        $state = $state | (update current_view revlog)
+        $state | save -f $state_file
+        print-revlog $width $state
+      }
     }
   }
 }
