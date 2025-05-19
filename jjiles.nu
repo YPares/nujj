@@ -8,15 +8,17 @@ const default_config = {
   }
   bindings: {
     fzf: {
-      "esc,ctrl-c":     cancel
-      scroll-up:        offset-up
-      scroll-down:      offset-down
-      "alt-down,alt-j": page-down
-      "alt-up,alt-k":   page-up
-      page-down:        preview-page-down
-      page-up:          preview-page-up
-      ctrl-d:           preview-half-page-down
-      ctrl-u:           preview-half-page-up
+      "esc,ctrl-c":        cancel
+      scroll-up:           "offset-up+offset-up+offset-up"
+      scroll-down:         "offset-down+offset-down+offset-down"
+      preview-scroll-up:   "preview-up+preview-up+preview-up"
+      preview-scroll-down: "preview-down+preview-down+preview-down"
+      "alt-down,alt-j":    page-down
+      "alt-up,alt-k":      page-up
+      page-down:           preview-page-down
+      page-up:             preview-page-up
+      ctrl-d:              preview-half-page-down
+      ctrl-u:              preview-half-page-up
     }
   }
 }
