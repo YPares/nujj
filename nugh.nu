@@ -16,7 +16,10 @@ def defaults [...vals] {
 }
 
 # Get a table of the PRs
-export def --wrapped prs [...args] {
+export def --wrapped prs [
+  --help (-h) # Show this help page
+  ...args # Arguments to pass to `gh pr ls`
+] {
   ^gh pr ls ...$args --json "number,title,url,headRefName,baseRefName,author,isDraft,statusCheckRollup" |
   from json |
   update author {get login} |

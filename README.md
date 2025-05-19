@@ -12,9 +12,9 @@ or to any autoloaded nushell script.
 
 ## Main features
 
-- Getting the jj log as a structured nushell table
-- Getting PRs lists from GitHub as structured nushell tables
-- `jjiles`: an interactive `jj log` with `fzf` (à la [`jj-fzf`](https://github.com/tim-janik/jj-fzf)),
+- `nujj tblog`: getting the jj log as a structured nushell table
+- `nugh prs`: Getting PRs lists from GitHub as structured nushell tables
+- `jjiles`, a jj _Watcher_: an interactive `jj log` with `fzf` (à la [`jj-fzf`](https://github.com/tim-janik/jj-fzf)),
   with custom jj log templates support, auto-refresh, adaptive diff layout, system theme detection
   (which will also work in [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
   and syntax-highlighting via [`delta`](https://github.com/dandavison/delta).
@@ -22,8 +22,8 @@ or to any autoloaded nushell script.
 
 ## Dependencies
 
-- nushell (nixpkgs#nushell)
-- jj (nixpkgs#jujutsu)
+- nushell (nixpkgs#nushell) (>=0.103)
+- jj (nixpkgs#jujutsu) (latest stable version preferably)
 - gh (nixpkgs#gh)
 - fzf (nixpkgs#fzf)
 - delta (nixpkgs#delta)
