@@ -28,8 +28,8 @@ def print-oplog [width: int, state: record] {
     ( print -n
         $"(ansi default_reverse)♡(ansi reset)  (char us)@(char us)_(char us)"
         $"(ansi yellow)Live current operation(ansi reset)\n"
-        $"│  (ansi default_italic)This operation will be updated whenever any of"
-        $" ($state.watched_files | each {$'`($in)`'} | str join ', ') is modified(ansi reset)\n"
+        $"│  (ansi default_italic)This operation will be updated whenever"
+        $" ($state.watched_files | each {$'`($in)`'} | str join ' or ') is modified(ansi reset)\n"
         $"│(char nul)"
     )
   }

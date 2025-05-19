@@ -212,7 +212,7 @@ export def --wrapped main [
 
   if ($watch != null) {
     if ($freeze_at_op != null) {
-      finalize $finalizers "--watch cannot be used with --freeze-at-op"
+      finalize $finalizers "--watch cannot be used with --at-op(eration)"
     }
     if not ($watch | path exists) {
       finalize $finalizers $"--watch: ($watch) does not exist"
