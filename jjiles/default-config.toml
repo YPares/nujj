@@ -14,6 +14,12 @@ input = "none"
 list = "none"
 preview = "line"
 
+[jjiles.diff]
+# Ask delta to generate a double-column diff if we have more than a
+# certain amount of characters per line. Set it to a very high value
+# to always use single-column diffs
+double-column-threshold = 130
+
 # Colors used later can be a key in the 'theme-mappings' section below.
 # In such case, the color will depend on system theme. This is for users
 # who want their configuration to look OK whatever the system theme
@@ -24,7 +30,7 @@ opaque.light = "white"
 
 high-contrast.dark = "#ffffff"
 high-contrast.light = "#000000"
-high-contrast.default = "#888888" # here we provide a default if system theme cannot be detected 
+high-contrast.default = "#888888" # here we provide a default if system theme cannot be detected
 
 # Will be passed to fzf --color. See `man fzf` for more info.
 [jjiles.colors.fzf]

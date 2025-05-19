@@ -1,6 +1,6 @@
 # Used inside fzf by jjiles.nu
 
-use ./deltau.nu
+use ../deltau.nu
 
 def main [] {}
 
@@ -140,13 +140,13 @@ def --wrapped "main update-list" [
   }
 }
 
-def preview-op [_width _state matches] {
+def preview-op [_width state matches] {
   ( ^jj op show
       $matches.change_or_op_id
       --no-graph --patch --git
       --color always
       --ignore-working-copy
-  ) | deltau wrapper --paging never
+  ) | deltau wrapper -s $state.diff_config.double-column-threshold --paging never
 }
 
 def preview-rev-or-file [width state matches] {
@@ -194,7 +194,7 @@ def preview-rev-or-file [width state matches] {
       ...(if $matches.file? != null {[$matches.file]} else {[]})
       --ignore-working-copy
       --at-operation $state.selected_operation_id
-  ) | deltau wrapper --paging never
+  ) | deltau wrapper -s $state.diff_config.double-column-threshold --paging never
 }
 
 def --wrapped "main preview" [state_file: path, ...contents: string] {

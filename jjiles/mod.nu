@@ -1,10 +1,10 @@
-use ./deltau.nu
+use ../deltau.nu
 
-const this_dir = path self | path dirname
+const jjiles_dir = path self | path dirname
 
-const fzf_callbacks = $this_dir | path join fzf-callbacks.nu
+const fzf_callbacks = $jjiles_dir | path join fzf-callbacks.nu
 
-const default_config_file = $this_dir | path join default-config.toml
+const default_config_file = $jjiles_dir | path join default-config.toml
 
 
 def --wrapped cond [bool ...flags] {
@@ -28,7 +28,7 @@ def to-fzf-bindings []: record -> list<string> {
   } | flatten
 }
 
-def to-fzf-colors [mappings theme]: record -> string {
+def to-fzf-colors [mappings: record, theme: string]: record -> string {
   transpose elem color | each {|row|
     let map = $mappings | get -i $row.color 
     let color = if ($map != null) {
@@ -85,7 +85,7 @@ def mktemplate [...args] {
 #     Open the preview panel (showing the diff) at the right/bottom/top (repeat to change the panel size)
 # - Ctrl+q: exit immediately
 #
-# Other key bindings are rebindable via the JJ config file (see --output-default-config).
+# Other key bindings are rebindable via the JJ config file (see below).
 #
 # # Notes about using custom JJ log templates
 # 
@@ -97,7 +97,7 @@ def mktemplate [...args] {
 #
 # JJiles can be configured via a `[jjiles]` section in your ~/.config/jj/config.toml.
 #
-# See the `default-config.toml` file in this repo for more information.
+# See the `default-config.toml` file in this folder for more information.
 export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log
@@ -119,7 +119,7 @@ export def --wrapped main [
     return $defcfg
   }
   
-  # We read the user config:
+  # We read the overriden config and merge it with the default one:
   let cfg = $defcfg | get jjiles | merge deep (
     ^jj config list jjiles e> /dev/null | from toml | get -i jjiles | default {}
   )
@@ -137,7 +137,7 @@ export def --wrapped main [
     [op log] => {
       {view: "oplog", extra_args: []}
     }
-    [op log ..$_args] => {
+    [op log ..$_rest] => {
       finalize $finalizers "Passing `jj op log` extra args is not supported"
     }
     [log ..$rest] => {
@@ -190,6 +190,7 @@ export def --wrapped main [
     oplog_template: $oplog_template
     revlog_template: $revlog_template
     jj_revlog_extra_args: $init_view.extra_args
+    diff_config: $cfg.diff
     revset: $revisions
     current_view: $init_view.view
     pos_in_oplog: 0
