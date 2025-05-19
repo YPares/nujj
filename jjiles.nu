@@ -104,11 +104,12 @@ export def --wrapped main [
     # An operation (from 'jj op log') at which to browse your repo.
     # Will deactivate the .jj folder watching if given.
   --at-op: string # Alias for --at-operation (to match jj CLI args)
-  --watch (-w): path # A folder to watch for changes. Cannot be used with --at-operation
+  --watch (-w): path # A folder to watch for changes. Cannot be used with --at-op(eration)
+  --fetch-every (-f): duration # Regularly run jj git fetch
   --hide-search (-S) # The search bar is hidden by default
   --fuzzy # Use fuzzy finding instead of exact match
   --output-default-config # Output the default config
-  ...args # Extra args to pass to 'jj log'
+  ...args # Extra args to pass to 'jj log' (--config for example)
 ] {
   if $output_default_config {
     return {jjiles: $default_config}
@@ -207,7 +208,7 @@ export def --wrapped main [
     $id
   }
 
-  let extra_watcher_id = if ($watch != null) {
+  if ($watch != null) {
     if ($freeze_at_op != null) {
       finalize $finalizers "--watch cannot be used with --freeze-at-op"
     }
@@ -222,7 +223,14 @@ export def --wrapped main [
       }
     }
     $finalizers = {job kill $id} | append $finalizers
-    $id
+  }
+
+  if ($fetch_every != null) {
+    let id = job spawn {loop {
+      sleep $fetch_every
+      ^jj git fetch
+    }}
+    $finalizers = {job kill $id} | append $finalizers
   }
 
   let color = match (deltau theme-flags) {
