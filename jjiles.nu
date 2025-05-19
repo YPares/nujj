@@ -54,14 +54,13 @@ def finalize [finalizers: list<closure>, exc?] {
 
 # (char us) will be treated as the fzf field delimiter.
 # 
-# Eg. each "line" of the revlog will therefore be seen by fzf as:
-# graph characters | change_id | user log template (char gs)
-# (with '|' representing (char us))
-# so that fzf can only show fields 1 & 3 to the user and still
-# extract the change_id
+# Each "line" of the oplog/revlog will therefore be seen by fzf as:
+# `jj graph characters | change_or_op_id | commit_id? | user template (char gs)`
+# with '|' representing (char us)
+# Fzf can then only show fields 1 & 4 to the user (--with-nth) and we can reliably
+# extract the data we need from the other fields
 # 
-# We terminate the template by (char gs) because JJ cannot deal
-# it seems with templates containing NULL
+# We terminate the template by (char gs) because JJ cannot deal with templates containing NULL
 def mktemplate [...args] {
   $args |
     each {[$"'(char us)'" $in]} |
@@ -157,9 +156,13 @@ export def --wrapped main [
 
   # We generate from the user oplog/revlog templates new templates
   # from which fzf can reliably extract the data it needs.
-  let oplog_template = mktemplate "id.short()" $oplog_template
-  let revlog_template = mktemplate "change_id.shortest(8)" $revlog_template
-
+  let oplog_template = (
+    mktemplate "id.short()" "'_'" $oplog_template
+  )
+  let revlog_template = (
+    mktemplate "change_id.shortest(8)" "commit_id.shortest(8)" $revlog_template
+  )
+  
   let freeze_at_op = $at_operation | default $at_op
   let operation = match $freeze_at_op {
     null => "@"
@@ -269,7 +272,7 @@ export def --wrapped main [
     ^nu -n $fzf_callbacks update-list refresh $state_file |
     ( ^fzf
       --read0
-      --delimiter (char us) --with-nth "1,3"
+      --delimiter (char us) --with-nth "1,4"
       --layout (match $config.interface.menu_position {
         "top" => "reverse"
         "bottom" => "reverse-list"

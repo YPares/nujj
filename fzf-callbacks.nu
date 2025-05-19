@@ -6,7 +6,7 @@ def main [] {}
 
 def get-matches [
 ]: string -> record<change_or_op_id?: string, file?: string> {
-  let ids_parser = $"(char us)\(?<change_or_op_id>.+)(char us)"
+  let ids_parser = $"(char us)\(?<change_or_op_id>.+)(char us)\(?<commit_id>.+)(char us)"
   let file_parser = $"(char fs)\(?<file>.+)(char fs)"
 
   let text = $in
@@ -26,7 +26,7 @@ def replace-template-ending [] {
 def print-oplog [width: int, state: record] {
   if ($state.watched_files | is-not-empty) {
     ( print -n
-        $"(ansi default_reverse)♡(ansi reset)  (char us)@(char us)"
+        $"(ansi default_reverse)♡(ansi reset)  (char us)@(char us)_(char us)"
         $"(ansi yellow)Live current operation(ansi reset)\n"
         $"│  (ansi default_italic)This operation will be updated whenever any of"
         $" ($state.watched_files | each {$'`($in)`'} | str join ', ') is modified(ansi reset)\n"
@@ -59,6 +59,7 @@ def print-files [state: record, change_id: string] {
     ^jj log -r $change_id --no-graph
       -T $"self.diff\().files\().map\(|x|
             '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
+            commit_id.shortest\(8) ++ '(char us)' ++
             '● (char fs)(ansi yellow)' ++ x.path\() ++ '(ansi reset)(char fs) [' ++ x.status\() ++ ']'
           ).join\('(char gs)')"
       --ignore-working-copy
@@ -145,7 +146,7 @@ def preview-op [_width _state matches] {
 
 def preview-rev-or-file [width state matches] {
   let bookmarks = (
-    ^jj log -r $"($matches.change_or_op_id):: & \(bookmarks\() | remote_bookmarks\())"
+    ^jj log -r $"($matches.commit_id):: & \(bookmarks\() | remote_bookmarks\())"
       -T 'bookmarks ++ " "'
       --no-graph
       --color always
@@ -153,7 +154,7 @@ def preview-rev-or-file [width state matches] {
       --at-operation $state.selected_operation_id
   ) | complete
   let rev_infos = (
-    ^jj log -r $matches.change_or_op_id
+    ^jj log -r $matches.commit_id
       -T $"change_id.shortest\(8) ++ '(char fs)' ++ author ++ '(char fs)' ++ author.timestamp\() ++ '(char fs)' ++ commit_id.shortest\(8) ++ 
           '\n' ++ diff.files\().len\() ++
           '\n' ++ description"
@@ -183,7 +184,7 @@ def preview-rev-or-file [width state matches] {
       $"\(($rev_infos.1) file\(s) modified)"
       ""
   )
-  ( ^jj diff -r $matches.change_or_op_id --color always
+  ( ^jj diff -r $matches.commit_id --color always
       --git
       ...(if $matches.file? != null {[$matches.file]} else {[]})
       --ignore-working-copy
