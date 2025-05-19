@@ -1,27 +1,11 @@
 use ./deltau.nu
 
-const fzf_callbacks = [(path self | path dirname) "fzf-callbacks.nu"] | path join
+const this_dir = path self | path dirname
 
-const default_config = {
-  interface: {
-    menu_position: top
-  }
-  bindings: {
-    fzf: {
-      "esc,ctrl-c":        cancel
-      scroll-up:           "offset-up+offset-up+offset-up"
-      scroll-down:         "offset-down+offset-down+offset-down"
-      preview-scroll-up:   "preview-up+preview-up+preview-up"
-      preview-scroll-down: "preview-down+preview-down+preview-down"
-      "alt-down,alt-j":    page-down
-      "alt-up,alt-k":      page-up
-      page-down:           preview-page-down
-      page-up:             preview-page-up
-      ctrl-d:              preview-half-page-down
-      ctrl-u:              preview-half-page-up
-    }
-  }
-}
+const fzf_callbacks = $this_dir | path join fzf-callbacks.nu
+
+const default_config_file = $this_dir | path join default-config.toml
+
 
 def --wrapped cond [bool ...flags] {
   if $bool {$flags} else {[]}
@@ -35,13 +19,27 @@ def --wrapped cmd [
 }
 
 def used-keys []: record -> table<key: string> {
-  columns | each { split row "," } | flatten | wrap key
+  columns | each { split row "," } | flatten | each {str trim} | wrap key
 }
 
 def to-fzf-bindings []: record -> list<string> {
   transpose keys actions | each {|row|
     [--bind $"($row.keys):($row.actions | str join "+")"]
   } | flatten
+}
+
+def to-fzf-colors [mappings theme]: record -> string {
+  transpose elem color | each {|row|
+    let map = $mappings | get -i $row.color 
+    let color = if ($map != null) {
+      $map | get -i $theme | default $map.default?
+    } else {
+      $row.color | str join ":"
+    }
+    if ($color != null) {
+      $"($row.elem):($color)"
+    }
+  } | str join ","
 }
 
 # Runs a list of finalizers and optionally (re)throws an exception
@@ -83,8 +81,8 @@ def mktemplate [...args] {
 # - Right & left arrows: go into/out of a revision (to preview only specific files)
 # - Return: open/close the preview panel (showing the diff of a revision)
 # - Ctrl+f or F3: toggle the search field on/off
-# - Ctrl+r: place the preview on the right (repeat to change preview window size)
-# - Ctrl+b: put the preview on the bottom (repeat to change preview window size)
+# - Ctrl+r / Ctrl+b / Ctrl+t:
+#     Open the preview panel (showing the diff) at the right/bottom/top (repeat to change the panel size)
 # - Ctrl+q: exit immediately
 #
 # Other key bindings are rebindable via the JJ config file (see --output-default-config).
@@ -97,7 +95,9 @@ def mktemplate [...args] {
 #   to give an acceptable size at which to truncate commit description headers:
 #   `truncate_end(config("desc-len").as_integer(), description.first_line())`
 #
-# JJiles can be configured via a `[jjiles]` section in your ~/.config/jj/config.toml
+# JJiles can be configured via a `[jjiles]` section in your ~/.config/jj/config.toml.
+#
+# See the `default-config.toml` file in this repo for more information.
 export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log
@@ -108,15 +108,26 @@ export def --wrapped main [
   --at-op: string # Alias for --at-operation (to match jj CLI args)
   --watch (-w): path # A folder to watch for changes. Cannot be used with --at-op(eration)
   --fetch-every (-f): duration # Regularly run jj git fetch
-  --hide-search (-S) # The search bar is hidden by default
   --fuzzy # Use fuzzy finding instead of exact match
-  --output-default-config # Output the default config
+  --default-config # Just return the default config
+  --current-config # Just return the current config
   ...args # Extra args to pass to 'jj log' (--config for example)
 ] {
-  if $output_default_config {
-    return {jjiles: $default_config}
+  let defcfg = open $default_config_file
+
+  if $default_config {
+    return $defcfg
   }
   
+  # We read the user config:
+  let cfg = $defcfg | get jjiles | merge deep (
+    ^jj config list jjiles e> /dev/null | from toml | get -i jjiles | default {}
+  )
+
+  if $current_config {
+    return $cfg
+  }
+
   # Will contain closures that release all the resources acquired so far:
   mut finalizers: list<closure> = []
 
@@ -136,11 +147,6 @@ export def --wrapped main [
       {view: "revlog", extra_args: $args}
     }
   }
-
-  # We read the user config:
-  let config = $default_config | merge deep (
-    ^jj config list jjiles e> /dev/null | from toml | get -i jjiles | default {}
-  )
 
   # We retrieve the user op log template:
   let oplog_template = ^jj config get templates.op_log
@@ -235,7 +241,7 @@ export def --wrapped main [
     $finalizers = {job kill $id} | append $finalizers
   }
 
-  let color = match (deltau theme-flags) {
+  let theme = match (deltau theme-flags) {
     ["--dark"] => "dark"
     ["--light"] => "light"
     _ => "16"
@@ -248,13 +254,13 @@ export def --wrapped main [
       $header_loading_cmd
       (cmd update-list back $state_file "{n}" "{}")
       clear-query
-      ...(cond $hide_search hide-input)
+      ...(cond (not $cfg.interface.search-bar-visible) hide-input)
     ]
     "right,ctrl-l": [
       $header_loading_cmd
       (cmd update-list into $state_file "{n}" "{}")
       clear-query
-      ...(cond $hide_search hide-input)
+      ...(cond (not $cfg.interface.search-bar-visible) hide-input)
     ]
     load: (cmd -c transform on-load-finished $state_file)
     
@@ -265,7 +271,12 @@ export def --wrapped main [
     ]
     ctrl-b: [
       "change-preview-window(bottom,50%|bottom,90%)"
-      hide-header
+      (if ($cfg.interface.menu-position == bottom) {"hide-header"} else {"show-header"})
+      refresh-preview
+    ]
+    ctrl-t: [
+      "change-preview-window(top,50%|top,90%)"
+      (if ($cfg.interface.menu-position == top) {"hide-header"} else {"show-header"})
       refresh-preview
     ]
 
@@ -273,7 +284,7 @@ export def --wrapped main [
     enter:           [toggle-preview, show-header]
   }
 
-  let conflicting_keys = $main_bindings | used-keys | join ($config.bindings.fzf | used-keys) key
+  let conflicting_keys = $main_bindings | used-keys | join ($cfg.bindings.fzf | used-keys) key
   if ($conflicting_keys | is-not-empty) {
     finalize $finalizers $"Keybindings for ($conflicting_keys | get key) cannot be overriden by user config"
   }
@@ -287,32 +298,35 @@ export def --wrapped main [
     ( ^fzf
       --read0
       --delimiter (char us) --with-nth "1,4"
-      --layout (match $config.interface.menu_position {
+      --layout (match $cfg.interface.menu-position {
         "top" => "reverse"
         "bottom" => "reverse-list"
       })
       --no-sort --track
-      ...(cond $hide_search --no-input)
+      ...(cond (not $cfg.interface.search-bar-visible) --no-input)
       ...(cond (not $fuzzy) --exact)
 
-      --style minimal
-      --ansi --color $color
+      --ansi --color $theme
+      --style $cfg.interface.fzf-style
+      --color ($cfg.colors.fzf | to-fzf-colors $cfg.colors.theme-mappings $theme)
       --highlight-line
-      --header-border block --header-first
-      --input-border (match $config.interface.menu_position {
-        "top" => "bottom"
-        "bottom" => "top"
-      })
-      --prompt "Filter: " --ghost "(Ctrl+f to hide)"
-      --info-command $'echo "($revisions) - $FZF_INFO"' --info inline-right
-      --pointer "🡆" --color "pointer:cyan"
+      --header-first
+      --header-border  $cfg.interface.borders.header 
+      --input-border   $cfg.interface.borders.input
+      --list-border    $cfg.interface.borders.list
+      --preview-border $cfg.interface.borders.preview
+      --prompt "Filter: "
+      --ghost "(Ctrl+f to hide)"
+      --info-command $'echo "($revisions) - $FZF_INFO"'
+      --info inline-right
+      --pointer "🡆" 
 
-      --preview-window "right,50%,hidden,wrap,info"
+      --preview-window "right,50%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
 
       ...(cond ($jj_watcher_id != null) --listen $fzf_port)
 
-      ...($main_bindings | merge $config.bindings.fzf | to-fzf-bindings)
+      ...($main_bindings | merge $cfg.bindings.fzf | to-fzf-bindings)
     )
   } catch {$in}
   ( finalize $finalizers
