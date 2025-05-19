@@ -239,13 +239,17 @@ export def --wrapped main [
     _ => "16"
   }
 
+  let header_loading_cmd = $"change-header\((ansi default_bold)...(ansi reset))"
+  
   let main_bindings = {
     "left,ctrl-h": [
+      $header_loading_cmd
       (cmd update-list back $state_file "{n}" "{}")
       clear-query
       ...(cond $hide_search hide-input)
     ]
     "right,ctrl-l": [
+      $header_loading_cmd
       (cmd update-list into $state_file "{n}" "{}")
       clear-query
       ...(cond $hide_search hide-input)
@@ -301,7 +305,7 @@ export def --wrapped main [
       --info-command $'echo "($revisions) - $FZF_INFO"' --info inline-right
       --pointer "🡆" --color "pointer:cyan"
 
-      --preview-window "right,50%,hidden,wrap"
+      --preview-window "right,50%,hidden,wrap,info"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
 
       ...(cond ($jj_watcher_id != null) --listen $fzf_port)
