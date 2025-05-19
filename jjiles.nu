@@ -303,3 +303,4 @@ export def --wrapped main [
       # fzf being Ctrl-C'd isn't an error for us. Thus we only rethrow other errors
   )
 }
+

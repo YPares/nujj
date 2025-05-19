@@ -5,13 +5,13 @@ use ./deltau.nu
 def main [] {}
 
 def get-matches [
-]: string -> record<change_id?: string, file?: string> {
-  let change_id_parser = $"(char us)\(?<change_id>.+)(char us)"
+]: string -> record<change_or_op_id?: string, file?: string> {
+  let ids_parser = $"(char us)\(?<change_or_op_id>.+)(char us)"
   let file_parser = $"(char fs)\(?<file>.+)(char fs)"
 
   let text = $in
   [
-    ...($text | parse -r $change_id_parser)
+    ...($text | parse -r $ids_parser)
     ...($text | parse -r $file_parser)
   ] | into record
 }
@@ -94,10 +94,10 @@ def --wrapped "main update-list" [
   # We update the state to perform the transition (if any happened):
   let updates = match [$state.current_view $transition $matches] {
     # From oplog into revlog:
-    [oplog into {change_id: $change_id}] => {
+    [oplog into {change_or_op_id: $op_id}] => {
       {
         current_view: revlog
-        selected_operation_id: $change_id
+        selected_operation_id: $op_id
       }
     }
     # From revlog back to oplog:
@@ -105,7 +105,7 @@ def --wrapped "main update-list" [
       {current_view: oplog}
     }
     # From revlog into files:
-    [revlog into {change_id: $change_id}] => {
+    [revlog into {change_or_op_id: $change_id}] => {
       {
         current_view: files
         selected_change_id: $change_id
@@ -136,7 +136,7 @@ def --wrapped "main update-list" [
 
 def preview-op [_width _state matches] {
   ( ^jj op show
-      $matches.change_id
+      $matches.change_or_op_id
       --no-graph --patch --git
       --color always
       --ignore-working-copy
@@ -145,7 +145,7 @@ def preview-op [_width _state matches] {
 
 def preview-rev-or-file [width state matches] {
   let bookmarks = (
-    ^jj log -r $"($matches.change_id):: & \(bookmarks\() | remote_bookmarks\())"
+    ^jj log -r $"($matches.change_or_op_id):: & \(bookmarks\() | remote_bookmarks\())"
       -T 'bookmarks ++ " "'
       --no-graph
       --color always
@@ -153,7 +153,7 @@ def preview-rev-or-file [width state matches] {
       --at-operation $state.selected_operation_id
   ) | complete
   let rev_infos = (
-    ^jj log -r $matches.change_id
+    ^jj log -r $matches.change_or_op_id
       -T $"change_id.shortest\(8) ++ '(char fs)' ++ author ++ '(char fs)' ++ author.timestamp\() ++ '(char fs)' ++ commit_id.shortest\(8) ++ 
           '\n' ++ diff.files\().len\() ++
           '\n' ++ description"
@@ -183,7 +183,7 @@ def preview-rev-or-file [width state matches] {
       $"\(($rev_infos.1) file\(s) modified)"
       ""
   )
-  ( ^jj diff -r $matches.change_id --color always
+  ( ^jj diff -r $matches.change_or_op_id --color always
       --git
       ...(if $matches.file? != null {[$matches.file]} else {[]})
       --ignore-working-copy
@@ -196,7 +196,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
   let width = $env.FZF_PREVIEW_COLUMNS? | default "80" | into int
   let matches = $contents | str join " " | get-matches
 
-  match [$state.current_view $matches.change_id?] {
+  match [$state.current_view $matches.change_or_op_id?] {
     [_ null] => {
       print $"(ansi default_italic)\(Nothing to show)(ansi reset)"
     }
