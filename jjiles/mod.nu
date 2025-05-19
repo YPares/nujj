@@ -146,7 +146,11 @@ export def --wrapped main [
     [log ..$rest] => {
       {view: "revlog", extra_args: $rest}
     }
+    [evolog ..$rest] => {
+      {view: "evolog", extra_args: $rest}
+    }
     _ => {
+      # TODO: Query jj default command here
       {view: "revlog", extra_args: $args}
     }
   }
@@ -192,6 +196,8 @@ export def --wrapped main [
     watched_files: []
     oplog_template: $oplog_template
     revlog_template: $revlog_template
+    # For now the evolog template is the same as the revlog template:
+    evolog_template: $revlog_template
     jj_revlog_extra_args: $init_view.extra_args
     diff_config: $cfg.diff
     revset: $revisions
