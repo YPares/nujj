@@ -16,13 +16,13 @@ export def theme-flags [] {
 }
 
 # Get the layout flags for delta
-export def layout-flags [] {
+export def layout-flags [side_by_side_threshold: int] {
   let width = $env.FZF_PREVIEW_COLUMNS? |
     default $env.FZF_COLUMNS? |
     default (tput cols) |
     into int
   [ --width $width
-    ...(if $width >= 130 {
+    ...(if $width >= $side_by_side_threshold {
         ["--side-by-side"]
       } else {[]}
     )
@@ -30,6 +30,6 @@ export def layout-flags [] {
 }
 
 # Run delta with theme and layout detection
-export def --wrapped wrapper [...args] {
-  ^delta ...(theme-flags) ...(layout-flags) ...$args
+export def --wrapped wrapper [--side-by-side-threshold (-s): int = 130, ...args] {
+  ^delta ...(theme-flags) ...(layout-flags $side_by_side_threshold) ...$args
 }
