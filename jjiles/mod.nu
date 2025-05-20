@@ -1,4 +1,5 @@
 use ../deltau.nu
+use parsing.nu
 
 const jjiles_dir = path self | path dirname
 
@@ -83,9 +84,9 @@ def mktemplate [...args] {
 # - Ctrl+f or F3: toggle the search field on/off
 # - Ctrl+r / Ctrl+b / Ctrl+t:
 #     Open the preview panel (showing the diff) at the right/bottom/top (repeat to change the panel size)
-# - Ctrl+q: exit immediately
-#
-# Other key bindings are rebindable via the JJ config file (see below).
+# - Esc: empty search field or (if already empty) exit
+# - Ctrl+q: exit and output infos about selected line
+# - Ctrl+c: exit immediately
 #
 # # Notes about using custom JJ log templates
 # 
@@ -95,7 +96,9 @@ def mktemplate [...args] {
 #   to give an acceptable size at which to truncate commit description headers:
 #   `truncate_end(config("desc-len").as_integer(), description.first_line())`
 #
-# JJiles can be configured via a `[jjiles]` section in your ~/.config/jj/config.toml.
+# # User configuration
+# 
+# JJiles UI, keybindings and colors can be configured via a `[jjiles]` section in your ~/.config/jj/config.toml.
 #
 # See the `default-config.toml` file in this folder for more information.
 export def --wrapped main [
@@ -112,7 +115,7 @@ export def --wrapped main [
   --default-config # Just return the default config
   --current-config # Just return the current config
   ...args # Extra args to pass to 'jj log' (--config for example)
-] {
+]: nothing -> record<change_or_op_id: string, commit_id?: string, file?: string> {
   let defcfg = open $default_config_file
 
   if $default_config {
@@ -166,7 +169,7 @@ export def --wrapped main [
   # We generate from the user oplog/revlog templates new templates
   # from which fzf can reliably extract the data it needs.
   let oplog_template = (
-    mktemplate "id.short()" "'_'" $oplog_template
+    mktemplate "id.short()" "''" $oplog_template
   )
   let revlog_template = (
     mktemplate "change_id.shortest(8)" "commit_id.shortest(8)" $revlog_template
@@ -294,7 +297,7 @@ export def --wrapped main [
     update watched_files ($watched_files | path expand | path relative-to ("." | path expand)) |
     save -f $state_file
 
-  let exc = try {
+  let res = try {
     ^nu -n $fzf_callbacks update-list refresh $state_file |
     ( ^fzf
       --read0
@@ -320,7 +323,7 @@ export def --wrapped main [
       --ghost "(Ctrl+f to hide)"
       --info-command $'echo "($revisions) - $FZF_INFO"'
       --info inline-right
-      --pointer "🡆" 
+      --pointer "🡆"
 
       --preview-window "right,50%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
@@ -329,10 +332,16 @@ export def --wrapped main [
 
       ...($main_bindings | merge $cfg.bindings.fzf | to-fzf-bindings)
     )
-  } catch {$in}
+  } catch {{error: $in}}
   ( finalize $finalizers
-      (if ($exc.exit_code? != 130) { $exc })
-      # fzf being Ctrl-C'd isn't an error for us. Thus we only rethrow other errors
+      (if (($res | describe) == record and
+           $res.error? != null and
+           $res.error.exit_code? != 130) {
+           # fzf being Ctrl-C'd isn't an error for us. Thus we only rethrow other errors
+        $res.error
+      })
   )
+  if ($res | describe) == string {
+    $res | parsing get-matches | transpose k v | where v != "" | transpose -rd
+  }
 }
-

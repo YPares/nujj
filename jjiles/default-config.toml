@@ -42,13 +42,20 @@ preview-border = "high-contrast"
 
 # Will be passed straight to fzf --bind. See `man fzf` for more info:
 [jjiles.bindings.fzf]
-"esc,ctrl-c" = "cancel"
+# Empty search bar, or (if already empty) quit without printing anything:
+"esc" = "cancel"
+# Quit and print the currently selected commit/operation:
+"ctrl-q,ctrl-g" = "accept"
+# Scroll log list with mouse wheel (repeated to scroll faster):
 scroll-up = "offset-up+offset-up+offset-up"
 scroll-down = "offset-down+offset-down+offset-down"
+# Scroll preview panel with mouse wheel (repeated to scroll faster):
 preview-scroll-up = "preview-up+preview-up+preview-up"
 preview-scroll-down = "preview-down+preview-down+preview-down"
+# Page up/down in log list:
 "alt-down,alt-j" = "page-down"
 "alt-up,alt-k" = "page-up"
+# Page up/down in preview panel:
 page-down = "preview-page-down"
 page-up = "preview-page-up"
 ctrl-d = "preview-half-page-down"

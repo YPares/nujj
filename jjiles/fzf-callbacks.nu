@@ -1,20 +1,9 @@
 # Used inside fzf by jjiles.nu
 
 use ../deltau.nu
+use parsing.nu
 
 def main [] {}
-
-def get-matches [
-]: string -> record<change_or_op_id?: string, file?: string> {
-  let ids_parser = $"(char us)\(?<change_or_op_id>.+)(char us)\(?<commit_id>.+)(char us)"
-  let file_parser = $"(char fs)\(?<file>.+)(char fs)"
-
-  let text = $in
-  [
-    ...($text | parse -r $ids_parser)
-    ...($text | parse -r $file_parser)
-  ] | into record
-}
 
 # Replace the (char gs) inserted at the end of the template
 # by a NULL that fzf will use as a multi-line record separator
@@ -26,7 +15,7 @@ def replace-template-ending [] {
 def print-oplog [width: int, state: record] {
   if ($state.watched_files | is-not-empty) {
     ( print -n
-        $"(ansi default_reverse)♡(ansi reset)  (char us)@(char us)_(char us)"
+        $"(ansi default_reverse)♡(ansi reset)  (char us)@(char us)(char us)"
         $"(ansi yellow)Live current operation(ansi reset)\n"
         $"│  (ansi default_italic)This operation will be updated whenever"
         $" ($state.watched_files | each {$'`($in)`'} | str join ' or ') is modified(ansi reset)\n"
@@ -81,7 +70,7 @@ def --wrapped "main update-list" [
 ] {
   mut state = open $state_file
   let width = $env.FZF_COLUMNS? | default (tput cols) | into int
-  let matches = $contents | str join " " | get-matches
+  let matches = $contents | str join " " | parsing get-matches
   
   # We store the current position of the cursor:
   let cell = match $state.current_view {
@@ -200,7 +189,7 @@ def preview-rev-or-file [width state matches] {
 def --wrapped "main preview" [state_file: path, ...contents: string] {
   let state = open $state_file
   let width = $env.FZF_PREVIEW_COLUMNS? | default "80" | into int
-  let matches = $contents | str join " " | get-matches
+  let matches = $contents | str join " " | parsing get-matches
 
   match [$state.current_view $matches.change_or_op_id?] {
     [_ null] => {
