@@ -70,6 +70,47 @@ def mktemplate [...args] {
     str join "++"
 }
 
+# Get the bits of JJ's config that jjiles need to work
+def get-needed-config-from-jj [
+  jj_config: record
+] {
+  let process = {
+    let clr = $in
+    match ($clr | parse "bright {color}") {
+      [{color: $c}] => $"light_($c)"
+      _ => $clr
+    }
+  }
+  {
+    revsets: {
+      log: $jj_config.revsets.log
+    }
+    templates: {
+      op_log: $jj_config.templates.op_log
+      log: $jj_config.templates.log
+    }
+    colors: {
+      operation: ($jj_config.colors."operation id" | do $process)
+      revision: ($jj_config.colors.change_id.fg | do $process)
+      commit: ($jj_config.colors.commit_id.fg | do $process)
+    }
+  }
+}
+
+# Get jjiles config
+export def get-config [
+  --jj-config (-j): record # Use this record as jj config instead of reading it from the files.
+                           # Pass an empty record {} to get jjiles default config
+] {
+  let default_config = open $default_config_file
+  let jj_config = if ($jj_config == null) {
+    ^jj config list jjiles | from toml
+  } else {$jj_config}
+  $default_config | get jjiles | merge deep (
+    $jj_config | get -i jjiles | default {}
+  )
+}
+
 # # JJiles. A JJ Watcher.
 #
 # Shows an interactive and auto-updating jj log that allows you to drill down into revisions.
@@ -100,6 +141,7 @@ def mktemplate [...args] {
 # 
 # JJiles UI, keybindings and colors can be configured via a `[jjiles]` section in your ~/.config/jj/config.toml.
 #
+# Run `jjiles get-config` to get the current config as a nushell record.
 # See the `default-config.toml` file in this folder for more information.
 export def --wrapped main [
   --help (-h) # Show this help page
@@ -112,25 +154,8 @@ export def --wrapped main [
   --watch (-w): path # A folder to watch for changes. Cannot be used with --at-op(eration)
   --fetch-every (-f): duration # Regularly run jj git fetch
   --fuzzy # Use fuzzy finding instead of exact match
-  --default-config # Just return the default config
-  --current-config # Just return the current config
   ...args # Extra args to pass to 'jj log' (--config for example)
 ]: nothing -> record<change_or_op_id: string, commit_id?: string, file?: string> {
-  let defcfg = open $default_config_file
-
-  if $default_config {
-    return $defcfg
-  }
-  
-  # We read the overriden config and merge it with the default one:
-  let cfg = $defcfg | get jjiles | merge deep (
-    ^jj config list jjiles e> /dev/null | from toml | get -i jjiles | default {}
-  )
-
-  if $current_config {
-    return $cfg
-  }
-
   # Will contain closures that release all the resources acquired so far:
   mut finalizers: list<closure> = []
 
@@ -151,17 +176,19 @@ export def --wrapped main [
     }
   }
 
-  # We retrieve the user op log template:
-  let oplog_template = ^jj config get templates.op_log
+  let jj_cfg = ^jj config list --include-defaults | from toml
+  let jjiles_cfg = get-config -j $jj_cfg
+  let jj_cfg = get-needed-config-from-jj $jj_cfg
+
   # We retrieve the user revlog template:
   let revlog_template = if ($template == null) {
-    ^jj config get templates.log
+    $jj_cfg.templates.log
   } else {
     $template
   }
   # We retrieve the user default log revset:
   let revisions = if ($revisions == null) {
-    ^jj config get revsets.log
+    $jj_cfg.revsets.log
   } else {
     $revisions
   }
@@ -169,7 +196,7 @@ export def --wrapped main [
   # We generate from the user oplog/revlog templates new templates
   # from which fzf can reliably extract the data it needs.
   let oplog_template = (
-    mktemplate "id.short()" "''" $oplog_template
+    mktemplate "id.short()" "''" $jj_cfg.templates.op_log
   )
   let revlog_template = (
     mktemplate "change_id.shortest(8)" "commit_id.shortest(8)" $revlog_template
@@ -193,7 +220,8 @@ export def --wrapped main [
     oplog_template: $oplog_template
     revlog_template: $revlog_template
     jj_revlog_extra_args: $init_view.extra_args
-    diff_config: $cfg.diff
+    diff_config: $jjiles_cfg.diff
+    color_config: ($jj_cfg.colors | merge $jjiles_cfg.colors.elements)
     revset: $revisions
     current_view: $init_view.view
     pos_in_oplog: 0
@@ -264,13 +292,13 @@ export def --wrapped main [
       $on_load_started_commands
       (cmd update-list back $state_file "{n}" "{}")
       clear-query
-      ...(cond (not $cfg.interface.search-bar-visible) hide-input)
+      ...(cond (not $jjiles_cfg.interface.search-bar-visible) hide-input)
     ]
     $into_keys: [
       $on_load_started_commands
       (cmd update-list into $state_file "{n}" "{}")
       clear-query
-      ...(cond (not $cfg.interface.search-bar-visible) hide-input)
+      ...(cond (not $jjiles_cfg.interface.search-bar-visible) hide-input)
     ]
     resize: [
       "execute(tput reset)" # Avoids glitches in the fzf interface when terminal is resized
@@ -289,12 +317,12 @@ export def --wrapped main [
     ]
     ctrl-b: [
       "change-preview-window(bottom,50%|bottom,90%)"
-      (if ($cfg.interface.menu-position == bottom) {"hide-header"} else {"show-header"})
+      (if ($jjiles_cfg.interface.menu-position == bottom) {"hide-header"} else {"show-header"})
       refresh-preview
     ]
     ctrl-t: [
       "change-preview-window(top,50%|top,90%)"
-      (if ($cfg.interface.menu-position == top) {"hide-header"} else {"show-header"})
+      (if ($jjiles_cfg.interface.menu-position == top) {"hide-header"} else {"show-header"})
       refresh-preview
     ]
 
@@ -303,7 +331,7 @@ export def --wrapped main [
     esc:             [close, show-header]
   }
 
-  let conflicting_keys = $main_bindings | used-keys | join ($cfg.bindings.fzf | used-keys) key
+  let conflicting_keys = $main_bindings | used-keys | join ($jjiles_cfg.bindings.fzf | used-keys) key
   if ($conflicting_keys | is-not-empty) {
     finalize $finalizers $"Keybindings for ($conflicting_keys | get key) cannot be overriden by user config"
   }
@@ -317,23 +345,23 @@ export def --wrapped main [
     ( ^fzf
       --read0
       --delimiter (char us) --with-nth "1,4"
-      --layout (match $cfg.interface.menu-position {
+      --layout (match $jjiles_cfg.interface.menu-position {
         "top" => "reverse"
         "bottom" => "reverse-list"
       })
       --no-sort --track
-      ...(cond (not $cfg.interface.search-bar-visible) --no-input)
+      ...(cond (not $jjiles_cfg.interface.search-bar-visible) --no-input)
       ...(cond (not $fuzzy) --exact)
 
       --ansi --color $theme
-      --style $cfg.interface.fzf-style
-      --color ($cfg.colors.fzf | to-fzf-colors $cfg.colors.theme-mappings $theme)
+      --style $jjiles_cfg.interface.fzf-style
+      --color ($jjiles_cfg.colors.fzf | to-fzf-colors $jjiles_cfg.colors.theme-mappings $theme)
       --highlight-line
       --header-first
-      --header-border  $cfg.interface.borders.header 
-      --input-border   $cfg.interface.borders.input
-      --list-border    $cfg.interface.borders.list
-      --preview-border $cfg.interface.borders.preview
+      --header-border  $jjiles_cfg.interface.borders.header 
+      --input-border   $jjiles_cfg.interface.borders.input
+      --list-border    $jjiles_cfg.interface.borders.list
+      --preview-border $jjiles_cfg.interface.borders.preview
       --prompt "Filter: "
       --ghost "Ctrl+f to hide, Ctrl+p/n for history"
       --info inline-right
@@ -345,7 +373,7 @@ export def --wrapped main [
 
       ...(cond ($jj_watcher_id != null) --listen $fzf_port)
 
-      ...($main_bindings | merge $cfg.bindings.fzf | to-fzf-bindings)
+      ...($main_bindings | merge $jjiles_cfg.bindings.fzf | to-fzf-bindings)
     )
   } catch {{error: $in}}
   ( finalize $finalizers

@@ -16,7 +16,7 @@ def print-oplog [width: int, state: record] {
   if ($state.watched_files | is-not-empty) {
     ( print -n
         $"(ansi default_reverse)♡(ansi reset)  (char us)@(char us)(char us)"
-        $"(ansi blue)Live current operation(ansi reset)\n"
+        $"(ansi $state.color_config.operation)Live current operation(ansi reset)\n"
         $"│  (ansi default_italic)This operation will be updated whenever"
         $" ($state.watched_files | each {$'`($in)`'} | str join ' or ') is modified(ansi reset)\n"
         $"│(char nul)"
@@ -49,7 +49,7 @@ def print-files [state: record, change_id: string] {
       -T $"self.diff\().files\().map\(|x|
             '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
             commit_id.shortest\(8) ++ '(char us)' ++
-            '● (char fs)(ansi yellow)' ++ x.path\() ++ '(ansi reset)(char fs) [' ++ x.status\() ++ ']'
+            '● (char fs)(ansi $state.color_config.filepath)' ++ x.path\() ++ '(ansi reset)(char fs) [' ++ x.status\() ++ ']'
           ).join\('(char gs)')"
       --ignore-working-copy
       --at-operation $state.selected_operation_id
@@ -218,11 +218,13 @@ def "main on-load-finished" [state_file: path, pos?: int] {
     $pos + 1
   }
 
+  let colors = $state.color_config
+
   let breadcrumbs = [
-    [view   menu   prefix color   value                        ];
-    [oplog  OpLog  Op     blue    $state.selected_operation_id?]
-    [revlog RevLog Rev    magenta $state.selected_change_id?   ]
-    [files  Files  File   yellow  null                         ]
+    [view   menu   prefix color             value                        ];
+    [oplog  OpLog  Op     $colors.operation $state.selected_operation_id?]
+    [revlog RevLog Rev    $colors.revision  $state.selected_change_id?   ]
+    [files  Files  File   $colors.filepath  null                         ]
   ]
 
   let before = $breadcrumbs | take until {$in.view == $state.current_view?}
@@ -245,7 +247,7 @@ def "main on-load-finished" [state_file: path, pos?: int] {
   let width = $env.FZF_COLUMNS | into int | $in - 4  # to account for border
 
   let help = [
-    ...(if ($state.current_view == revlog) {[$"Shown revs: (ansi light_magenta)($state.revset)"]} else {[]})
+    ...(if ($state.current_view == revlog) {[$"Shown revs: (ansi $colors.revision)($state.revset)"]} else {[]})
     $"Return: open preview"
   ] | str join $"(ansi default_dimmed) | "
 
