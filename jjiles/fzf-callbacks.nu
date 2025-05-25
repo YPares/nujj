@@ -55,9 +55,15 @@ def print-evolog [width: int, state: record] {
   ) | replace-template-ending
 }
 
+# Get the id that will condition where to look for files
+# (either change or commit id), depending on whether evolog is shown
+def get-file-index [state] {
+  if $state.is_evolog_shown {$state.selected_commit_id} else {$state.selected_change_id}
+}
+
 def print-files [state] {
   let jj_out = (
-    ^jj log -r $state.selected_commit_id --no-graph
+    ^jj log -r (get-file-index $state) --no-graph
       --template
           $"self.diff\().files\().map\(|x|
               '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
@@ -75,61 +81,68 @@ def print-files [state] {
   }
 }
 
-def --wrapped "main update-list" [
-  transition: string
-  state_file: path
-  fzf_pos: int = 0
-  ...contents: string
-] {
-  mut state = open $state_file
+def do-update [transition state state_file fzf_pos fzf_selection_contents] {
+  mut state = $state
   let width = $env.FZF_COLUMNS? | default (tput cols) | into int
-  let matches = $contents | str join " " | parsing get-matches
+  let matches = $fzf_selection_contents | str join " " | parsing get-matches
   
   # We store the current position of the cursor:
   let cell = match $state.current_view {
     "oplog"  => [pos_in_oplog]
     "revlog" => [pos_in_revlog $state.selected_operation_id] 
     "evolog" => [pos_in_evolog $state.selected_change_id]
-    "files"  => [pos_in_files $state.selected_commit_id]
+    "files"  => [pos_in_files (get-file-index $state)]
   }
-  if $cell != null {
+  if $cell != null and $fzf_pos != null {
     $state = $state | upsert ($cell | into cell-path) ($fzf_pos + 1)
   }
   
   # We update the state to perform the transition (if any happened):
-  let updates = match [$state.current_view $transition $matches] {
+  let updates = match [$state.current_view $state.is_evolog_shown $transition $matches] {
     # From oplog into revlog:
-    [oplog into {change_or_op_id: $op_id}] => {
+    [oplog _ into {change_or_op_id: $op_id}] => {
       {
         current_view: revlog
         selected_operation_id: $op_id
       }
     }
     # From revlog back to oplog:
-    [revlog back _] => {
+    [revlog _ back _] => {
       {current_view: oplog}
     }
     # From revlog into evolog:
-    [revlog into {change_or_op_id: $change_id}] => {
+    [revlog true into {change_or_op_id: $change_id}] => {
       {
         current_view: evolog
         selected_change_id: $change_id
       }
     }
+    # From revlog DIRECTLY into files:
+    [revlog false into {change_or_op_id: $change_id, commit_id: $commit_id}] => {
+      {
+        current_view: files
+        selected_change_id: $change_id
+        selected_commit_id: $commit_id
+      }
+    }
     # From evolog back into revlog:
-    [evolog back _] => {
+    [evolog _ back _] => {
       {current_view: revlog}
     }
     # From evolog into files:
-    [evolog into {commit_id: $commit_id}] => {
+    [evolog _ into {commit_id: $commit_id}] => {
       {
         current_view: files
         selected_commit_id: $commit_id
       }
     }
-    # From files back to revlog:
-    [files back _] => {
+    # From files back to evolog:
+    [files true back _] => {
       {current_view: evolog}
+    }
+    # From files DIRECTLY back to revlog:
+    [files false back _] => {
+      {current_view: revlog}
     }
   }
 
@@ -149,12 +162,37 @@ def --wrapped "main update-list" [
     }
     "files" => {
       if (not (print-files $state)) {
-        $state = $state | (update current_view evolog)
-        $state | save -f $state_file
-        print-evolog $width $state
+        if $state.is_evolog_shown {
+          $state = $state | (update current_view evolog)
+          $state | save -f $state_file
+          print-evolog $width $state
+        } else {
+          $state = $state | (update current_view revlog)
+          $state | save -f $state_file
+          print-revlog $width $state
+        }
       }
     }
   }
+}
+
+def --wrapped "main update-list" [
+  transition: string
+  state_file: path
+  fzf_pos: int = 0
+  ...contents: string
+] {
+  do-update $transition (open $state_file) $state_file $fzf_pos $contents
+}
+
+def "main toggle-evolog" [state_file: path, fzf_pos: int, ...contents] {
+  mut state = open $state_file
+  let cur_view = $state.current_view
+  $state = $state |
+    update is_evolog_shown {not $in} |
+    update current_view {if $cur_view == evolog {"revlog"} else {$cur_view}}
+  $state | save -f $state_file
+  do-update refresh $state $state_file (if $cur_view != evolog {$fzf_pos}) $contents
 }
 
 def call-delta [state file] {(
@@ -182,11 +220,10 @@ def preview-op [_width state matches] {
   ) | call-delta $state $matches.file?
 }
 
-
 def preview-evo [_width state matches] {
   ( ^jj evolog -n1
       -r $matches.commit_id
-      --template "'Changes in ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ '\n\n'"
+      --template "'[[ Changes in ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ ' ]]\n'"
       --no-graph
       --stat --patch --git
       --color always
@@ -243,7 +280,7 @@ def preview-rev-or-file [width state matches] {
 
   ( ^jj log -n1
       -r $matches.commit_id --color always
-      --template ""
+      --template "'[[ ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ ' ]]\n'"
       --no-graph
       (if $state.current_view == "files" {"--stat"} else {"--summary"})
       --patch --git
@@ -274,19 +311,19 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
   }
 }
 
-def "main on-load-finished" [state_file: path, pos?: int] {
+def "main on-load-finished" [state_file: path, fzf_pos?: int] {
   let state = open $state_file
 
-  let pos = if ($pos == null) {
+  let fzf_pos = if ($fzf_pos == null) {
     match $state.current_view? {
       "oplog" => $state.pos_in_oplog
       "revlog" => ($state.pos_in_revlog | get -i $state.selected_operation_id | default 0)
       "evolog" => ($state.pos_in_evolog | get -i $state.selected_change_id | default 0)
-      "files" => ($state.pos_in_files | get -i $state.selected_commit_id | default 0)
+      "files" => ($state.pos_in_files | get -i (get-file-index $state) | default 0)
       _ => 0
     }
   } else {
-    $pos + 1
+    $fzf_pos + 1
   }
 
   let colors = $state.color_config
@@ -298,6 +335,10 @@ def "main on-load-finished" [state_file: path, pos?: int] {
     [evolog EvoLog Commit $colors.commit    $state.selected_commit_id?  ]
     [files  Files  File   $colors.filepath  null                        ]
   ]
+
+  let breadcrumbs = if $state.is_evolog_shown {$breadcrumbs} else {
+    $breadcrumbs | where view != evolog
+  }
 
   let before = $breadcrumbs | take until {$in.view == $state.current_view?}
   let num_before = $before | length
@@ -320,14 +361,15 @@ def "main on-load-finished" [state_file: path, pos?: int] {
 
   let help = [
     ...(if ($state.current_view == revlog) {[$"Shown revs: (ansi $colors.revision)($state.revset)"]} else {[]})
-    $"Return: open preview"
+    "Ctrl+v: Toggle evolog"
+    "Return: Toggle preview"
   ] | str join $"(ansi default_dimmed) | "
 
   let padding = $width - ($header | ansi strip | str length) - ($help | ansi strip | str length)
 
   print ([
     $"change-header\(($header)(printf $"%($padding)s")(ansi default_dimmed)($help)(ansi reset))"
-    $"pos\(($pos))"
+    $"pos\(($fzf_pos))"
   ] | str join "+")
 }
 

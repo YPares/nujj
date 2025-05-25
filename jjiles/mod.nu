@@ -223,6 +223,7 @@ export def --wrapped main [
     diff_config: $jjiles_cfg.diff
     color_config: ($jj_cfg.colors | merge $jjiles_cfg.colors.elements)
     revset: $revisions
+    is_evolog_shown: false
     current_view: $init_view.view
     pos_in_oplog: 0
     selected_operation_id: $operation
@@ -312,6 +313,10 @@ export def --wrapped main [
       $"rebind\(($all_move_keys))"
     ]
     
+    ctrl-v: [
+      $on_load_started_commands
+      (cmd toggle-evolog $state_file "{n}" "{}")
+    ]
     ctrl-r: [
       "change-preview-window(right,83%|right,50%)"
       show-header
@@ -365,7 +370,7 @@ export def --wrapped main [
       --list-border    $jjiles_cfg.interface.borders.list
       --preview-border $jjiles_cfg.interface.borders.preview
       --prompt "Filter: "
-      --ghost "Ctrl+f to hide, Ctrl+p/n for history"
+      --ghost "Ctrl+f: hide | Ctrl+p or n: navigate history"
       --info inline-right
 
       --preview-window "hidden,wrap"
