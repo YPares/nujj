@@ -1,5 +1,29 @@
 use ./deltau.nu
 
+# Run a set of jj operations atomically:
+# if one fails, revert back to the original state
+#
+# Note that this isn't a real DB-like transaction in the sense
+# that it isn't isolated: if you run other jj commands in parallel
+# they can get intertwined with those of the closure (and the effect
+# of those parallel operations would be cancelled along if the closure
+# fails, which is probably what you want anyway in such a case)
+#
+# Long story short: don't run several of these in parallel, please.
+#
+# Also, it doesn't make them atomic with respect to 'jj undo', which
+# will still only undo the last operation done by the closure
+export def atomic [closure] {
+  let init_op = ^jj op log --no-graph -n1 -T "id.short()" 
+  try {
+    do $closure
+    print $"(ansi yellow)Important:(ansi reset) To undo, run 'jj op restore ($init_op)'"
+  } catch {|e|
+    ^jj op restore $init_op
+    error make $e
+  }
+}
+
 def list-to-revset [] {
   let list = $in
   if ($list | is-empty) {
@@ -11,8 +35,9 @@ def list-to-revset [] {
 
 # Add/remove parent(s) to a rev
 export def --wrapped reparent [
-  --revision (-r): string = "@"
-  ...parents: string
+  --help (-h)
+  --revision (-r): string = "@" # The rev to rebase
+  ...parents: string # A set of parents each prefixed with '-' or '+'
 ] {
   let added = $parents | parse "+{rev}" | get rev
   let removed = $parents | parse "-{rev}" | get rev
@@ -20,6 +45,17 @@ export def --wrapped reparent [
   ( ^jj rebase -s $revision
        -d $"all:\(($revision)- | ($added | list-to-revset)) & ~($removed | list-to-revset)"
   )
+}
+
+# Rebase the current revision somewhere and replace its previous position by a new one, which we edit
+export def --wrapped kick [
+  --help (-h)
+  ...rebase_args # Args to give to jj rebase
+] {
+  atomic {
+    ^jj new -A "@"
+    ^jj rebase -r "@-" ...$rebase_args
+  }
 }
 
 # Open a picker to select an operation and restore the working copy back to it
@@ -46,10 +82,12 @@ export def restore-at [
   --revision (-r): string = "@" # Which rev to split
   --no-split (-S) # Drop every change that came after restoration_point instead of splitting
 ] {
-  if not $no_split {
-    ^jj new --no-edit -A $revision
+  atomic {
+    if not $no_split {
+      ^jj new --no-edit -A $revision
+    }
+    ^jj restore --from $restoration_point --to $revision (if not $no_split { --restore-descendants } else {""})
   }
-  ^jj restore --from $restoration_point --to $revision (if not $no_split { --restore-descendants } else {""})
 }
 
 def to-group-name [] {
@@ -93,8 +131,10 @@ export def bookmarks-to-table [
 export def ci [
   --message (-m): string
 ] {
-  ^jj commit ...(if $message != null {[-m $message]} else {[]})
-  ^jj bookmark move --from @- --to @
+  atomic {
+    ^jj commit ...(if $message != null {[-m $message]} else {[]})
+    ^jj bookmark move --from @- --to @
+  }
 }
 
 # Open a picker to select a bookmark and advance it to its children
@@ -121,7 +161,6 @@ export def watch-diff [folder] {
 
 # Wraps jj diff in delta
 export def --wrapped diff [...args] {
-  ^jj diff --git ...$args |
-  deltau wrapper
+  ^jj diff --git ...$args | deltau wrapper
 }
 
