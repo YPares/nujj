@@ -45,11 +45,13 @@ def to-fzf-colors [mappings: record, theme: string]: record -> string {
 
 # Runs a list of finalizers and optionally (re)throws an exception
 def finalize [finalizers: list<closure>, exc?] {
-  for fin in $finalizers {
-    do $fin
+  for closure in $finalizers {
+    do $closure
   }
   if ($exc != null) {
-    error make (if (($exc | describe) == "string") {{msg: $exc}} else {$exc})
+    let exc = if (($exc | describe) == "string") {{msg: $exc}} else {$exc}
+    std log error $exc.msg
+    error make $exc
   }
 }
 
@@ -153,19 +155,20 @@ export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log
   --template (-T): string # The alias of the jj log template to use
+  --fuzzy # Use fuzzy finding instead of exact match
+  --fetch-every (-f): duration # Regularly run jj git fetch
   --at-operation: string
     # An operation (from 'jj op log') at which to browse your repo.
-    # Will deactivate the .jj folder watching if given.
+    #
+    # If given (even it is "@"), do not run any watcher process. The interface
+    # won't update upon changes to the repository or the working copy, and
+    # the "@" operation will remain frozen the whole time to the value its
+    # has when jjiles starts
   --at-op: string # Alias for --at-operation (to match jj CLI args)
-  --watch (-w): path # A folder to watch for changes. Cannot be used with --at-op(eration)
-  --fetch-every (-f): duration # Regularly run jj git fetch
-  --fuzzy # Use fuzzy finding instead of exact match
   ...args # Extra args to pass to 'jj log' (--config for example)
 ]: nothing -> record<change_or_op_id: string, commit_id?: string, file?: string> {
   # Will contain closures that release all the resources acquired so far:
   mut finalizers: list<closure> = []
-
-  mut watched_files: list<path> = []
 
   let init_view = match $args {
     [op log] => {
@@ -208,12 +211,10 @@ export def --wrapped main [
     mktemplate "change_id.shortest(8)" "commit_id.shortest(8)" $revlog_template
   )
   
-  let freeze_at_op = $at_operation | default $at_op
-  let operation = match $freeze_at_op {
-    null => "@"
-    _ => {
-      ^jj op log --at-operation $freeze_at_op --no-graph -n1 --template 'id.short()'
-    }
+  let at_operation = $at_operation | default $at_op
+  let do_watch = $at_operation == null
+  let at_operation = if $do_watch {"@"} else {
+    ^jj op log --at-operation $at_operation --no-graph -n1 --template 'id.short()' 
   }
 
   let tmp_dir = mktemp --directory
@@ -222,7 +223,7 @@ export def --wrapped main [
   let state_file = [$tmp_dir state.nuon] | path join
 
   {
-    watched_files: []
+    is_watching: $do_watch
     oplog_template: $oplog_template
     revlog_template: $revlog_template
     jj_revlog_extra_args: $init_view.extra_args
@@ -232,13 +233,13 @@ export def --wrapped main [
     is_evolog_shown: false
     current_view: $init_view.view
     pos_in_oplog: 0
-    selected_operation_id: $operation
+    selected_operation_id: $at_operation
     pos_in_revlog: {} # indexed by operation_id
     selected_change_id: null
     default_commit_id: null
     pos_in_evolog: {} # indexed by change_id
     selected_commit_id: null
-    pos_in_files: {} # indexed by commit_id
+    pos_in_files: {} # indexed by change_id or commit_id
   } | save $state_file
   
   let fzf_port = port
@@ -249,14 +250,15 @@ export def --wrapped main [
 
   let on_load_started_commands = $"change-header\((ansi default_bold)...(ansi reset))+unbind\(($all_move_keys))"
 
-  let repo_root = ^jj root
+  let repo_root = ^jj root | path expand -n
   let repo_jj_folder = $repo_root | path join ".jj"
   
-  let jj_watcher_id = if ($freeze_at_op == null) {
-    $watched_files = $repo_jj_folder | append $watched_files
+  let jj_watcher_id = if $do_watch {
     ^jj debug snapshot
     let id = job spawn {
+      std log debug $"Job (job id): Watching ($repo_jj_folder)"
       watch $repo_jj_folder -q {
+        std log debug $"Job (job id): Changes to .jj detected"
         ( $"($on_load_started_commands)+(cmd update-list refresh $state_file "{n}" "{}")" |
             http post $"http://localhost:($fzf_port)"
         )
@@ -266,28 +268,44 @@ export def --wrapped main [
     $id
   }
 
-  if ($watch != null) {
-    if ($freeze_at_op != null) {
-      finalize $finalizers "--watch cannot be used with --at-op(eration)"
-    }
-    if not ($watch | path exists) {
-      finalize $finalizers $"--watch: ($watch) does not exist"
-    }
-    $watched_files = $watch | append $watched_files
-    let id = job spawn {
-      watch $watch -q {
-        ^jj debug snapshot
-        # Will update the .jj folder and therefore trigger the jj watcher
+  let watchers_witness = $repo_jj_folder | path join "jjiles_watching.nuon"
+  let to_watch = $jjiles_cfg.watched? | default []
+  if ($do_watch and not ($to_watch | is-empty)) {
+    if ($watchers_witness | path exists) {
+      let pid = open $watchers_witness
+      std log debug $"Working copy watchers already started by another jjiles instance \(pid ($pid))"
+    } else {
+      $finalizers = {rm -f $watchers_witness} | append $finalizers
+      $nu.pid | save $watchers_witness
+      for w in $to_watch {
+        let folder = $repo_root | path join $w.folder
+        let pattern = $w.pattern? | default "**/*"
+        if not ($folder | path exists) {
+          ( finalize $finalizers
+              $"Folder ($folder) defined in [[jiles.watched]] does not exist in the repository" )
+        }
+        let id = job spawn {
+          std log debug $"Job (job id): Watching ($folder) for changes to ($pattern)"
+          watch $folder --glob $pattern -q {|_op, path|
+            std log debug $"Job (job id): Changes to ($path) detected"
+            # Will update the .jj folder and therefore trigger the jj watcher:
+            ^jj debug snapshot
+          }
+        }
+        $finalizers = {job kill $id} | append $finalizers
       }
     }
-    $finalizers = {job kill $id} | append $finalizers
   }
 
   if ($fetch_every != null) {
-    let id = job spawn {loop {
-      sleep $fetch_every
-      ^jj git fetch
-    }}
+    let id = job spawn {
+      std log debug $"Job (job id): Will run 'jj git fetch' every ($fetch_every)"
+      loop {
+        sleep $fetch_every
+        ^jj git fetch
+        std log debug $"Job (job id): Ran 'jj git fetch'"
+      }
+    }
     $finalizers = {job kill $id} | append $finalizers
   }
 
@@ -352,10 +370,6 @@ export def --wrapped main [
   if ($conflicting_keys | is-not-empty) {
     finalize $finalizers $"Keybindings for ($conflicting_keys | get key) cannot be overriden by user config"
   }
-
-  open $state_file |
-    update watched_files ($watched_files | path expand | path relative-to ("." | path expand)) |
-    save -f $state_file
 
   let res = try {
     ^nu -n $fzf_callbacks update-list refresh $state_file |

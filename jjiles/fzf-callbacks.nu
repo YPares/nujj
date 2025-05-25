@@ -13,12 +13,11 @@ def replace-template-ending [] {
 }
 
 def print-oplog [width: int, state: record] {
-  if ($state.watched_files | is-not-empty) {
+  if $state.is_watching {
     ( print -n
         $"(ansi default_reverse)♡(ansi reset)  (char us)@(char us)(char us)"
         $"(ansi $state.color_config.operation)Live current operation(ansi reset)\n"
-        $"│  (ansi default_italic)This operation will be updated whenever"
-        $" ($state.watched_files | each {$'`($in)`'} | str join ' or ') is modified(ansi reset)\n"
+        $"│  (ansi default_italic)This operation will be updated whenever any folder in the [jjiles.watched] config section is modified\n"
         $"│(char nul)"
     )
   }

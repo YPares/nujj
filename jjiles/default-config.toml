@@ -7,6 +7,16 @@
 # You can copy them to your JJ config as a starting point.
 #
 
+# Watcher settings. This is meant to be configured per repository,
+# and can be repeated for each folder in the repository to watch
+# 
+# WARN: The watched folders MUST NOT include the .jj folder, which will
+# be watched in any case unless jjiles is started with --at-operation.
+#
+#[[jjiles.watched]]
+#folder = "src" # The path (relative to project root) to watch
+#pattern = "**/*.rs" # Optional. Which files should be watched for changes in this folder (all by default)
+
 [jjiles.interface]
 # Which fzf style to use (minimal, default or full):
 fzf-style = "default"
