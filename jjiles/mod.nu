@@ -235,7 +235,7 @@ export def --wrapped main [
     diff_config: $jjiles_cfg.diff
     color_config: ($jj_cfg.colors | merge $jjiles_cfg.colors.elements)
     revset: $revisions
-    is_evolog_shown: false
+    is_evolog_shown: $jjiles_cfg.interface.evolog-toggled-on
     current_view: $init_view.view
     pos_in_oplog: 0
     selected_operation_id: $at_operation

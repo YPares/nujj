@@ -28,6 +28,8 @@ fzf-style = "default"
 menu-position = "top"
 ## Whether the search bar is visible by default or not:
 search-bar-visible = true
+## Whether the evolog is browsable by default or not:
+evolog-toggled-on = false
 
 ## Which style of borders to draw around the various elements of the interface.
 ## See `man fzf` for more info:
