@@ -328,7 +328,6 @@ export def --wrapped main [
       --prompt "Filter: "
       --ghost "Ctrl+f to hide"
       --info inline-right
-      --pointer "🡆"
 
       --preview-window "right,50%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")

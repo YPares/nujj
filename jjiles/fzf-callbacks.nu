@@ -16,7 +16,7 @@ def print-oplog [width: int, state: record] {
   if ($state.watched_files | is-not-empty) {
     ( print -n
         $"(ansi default_reverse)♡(ansi reset)  (char us)@(char us)(char us)"
-        $"(ansi yellow)Live current operation(ansi reset)\n"
+        $"(ansi blue)Live current operation(ansi reset)\n"
         $"│  (ansi default_italic)This operation will be updated whenever"
         $" ($state.watched_files | each {$'`($in)`'} | str join ' or ') is modified(ansi reset)\n"
         $"│(char nul)"

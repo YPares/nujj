@@ -1,3 +1,8 @@
+# These settings will be overriden by those in your JJ config.toml.
+# (`$HOME/.config/jj/config.toml`)
+#
+# You can copy them as they are here to your JJ config, as a starting point.
+
 [jjiles.interface]
 # Which fzf style to use (minimal, default or full):
 fzf-style = "default"
@@ -6,41 +11,51 @@ menu-position = "top"
 # Whether the search bar is visible by default or not:
 search-bar-visible = true
 
-# How to draw borders around the elements of the interface.
+# Which style of borders to draw around the various elements of the interface.
 # See `man fzf` for more info:
 [jjiles.interface.borders]
-header = "rounded"
+header = "sharp"
 input = "none"
 list = "none"
 preview = "line"
 
 [jjiles.diff]
-# Ask delta to generate a double-column diff if we have more than a
-# certain amount of characters per line. Set it to a very high value
-# to always use single-column diffs
+# JJiles default behaviour is to generate single-column diffs, and to switch to double-column
+# when it has enough space (ie. when the preview panel has at least a certain width,
+# in number of characters per line). This parameter defines that width threshold.
+# If you don't like double-column diffs, just set it to some arbitrary high number:
 double-column-threshold = 130
 
-# Colors used later can be a key in the 'theme-mappings' section below.
-# In such case, the color will depend on system theme. This is for users
+# Colors used in the rest of the config can be a key in the 'theme-mappings' section below.
+# In such case, the final color will depend on system theme. This is for users
 # who want their configuration to look OK whatever the system theme
 [jjiles.colors.theme-mappings]
 opaque.dark = "black" # if system theme is "dark", "opaque" will be replaced by "black"
 opaque.light = "white"
-# If system theme cannot be detected, everything using "opaque" will be ignored
+# No default. If the system theme cannot be detected, every setting using "opaque" will be ignored
 
 high-contrast.dark = "#ffffff"
 high-contrast.light = "#000000"
-high-contrast.default = "#888888" # here we provide a default if system theme cannot be detected
+high-contrast.default = "#888888" # here we provide a default to use if the system theme cannot be detected
 
-# Will be passed to fzf --color. See `man fzf` for more info.
+low-contrast.dark = "#373737"
+low-contrast.light = "#dfdfdf"
+
+# Colors will be passed to fzf --color, after being potentially remapped first.
+# See `man fzf` for more info:
 [jjiles.colors.fzf]
+header-border = "low-contrast"
 header-bg = "opaque"
+preview-border = "high-contrast"
+preview-bg = "opaque"
 list-border = "cyan"
 pointer = "high-contrast"
-preview-bg = "opaque"
-preview-border = "high-contrast"
 
-# Will be passed straight to fzf --bind. See `man fzf` for more info:
+# Bindings will be passed straight to fzf --bind.
+# Note that if you add mappings for keys that conflict with the main jjiles keybindings (those directly
+# defined in jjiles' code, which are not remappable), jjiles will show an error when starting.
+# 
+# See `man fzf` for more info:
 [jjiles.bindings.fzf]
 # Clear searchbar, or (if already empty) qui without printing anything:
 "ctrl-c" = "cancel"
