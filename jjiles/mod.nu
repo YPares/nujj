@@ -311,17 +311,17 @@ export def --wrapped main [
     ]
     
     ctrl-r: [
-      "change-preview-window(right,80%|right,50%)"
+      "change-preview-window(right,83%|right,50%)"
       show-header
       refresh-preview
     ]
     ctrl-b: [
-      "change-preview-window(bottom,50%|bottom,90%)"
+      "change-preview-window(bottom,50%|bottom,93%)"
       (if ($jjiles_cfg.interface.menu-position == bottom) {"hide-header"} else {"show-header"})
       refresh-preview
     ]
     ctrl-t: [
-      "change-preview-window(top,50%|top,90%)"
+      "change-preview-window(top,50%|top,93%)"
       (if ($jjiles_cfg.interface.menu-position == top) {"hide-header"} else {"show-header"})
       refresh-preview
     ]
@@ -366,7 +366,7 @@ export def --wrapped main [
       --ghost "Ctrl+f to hide, Ctrl+p/n for history"
       --info inline-right
 
-      --preview-window "right,50%,hidden,wrap"
+      --preview-window "hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
 
       --history ($repo_jj_folder | path join "jjiles_history")

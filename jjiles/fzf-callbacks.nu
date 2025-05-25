@@ -129,13 +129,28 @@ def --wrapped "main update-list" [
   }
 }
 
+def call-delta [state file] {(
+  deltau wrapper
+    -s $state.diff_config.double-column-threshold
+    --file-style "omit"
+    #--file-decoration-style $"($state.color_config.filepath) ul"
+    #--file-style $state.color_config.filepath
+    #--hunk-label "#"
+    --hunk-header-style
+      (if $file != null {"line-number"} else {"file line-number"})
+    --hunk-header-file-style $state.color_config.filepath
+    --hunk-header-line-number-style ""
+    --hunk-header-decoration-style "box"
+    --paging never
+)}
+
 def preview-op [_width state matches] {
   ( ^jj op show
       $matches.change_or_op_id
       --no-graph --patch --git
       --color always
       --ignore-working-copy
-  ) | deltau wrapper -s $state.diff_config.double-column-threshold --paging never
+  ) | call-delta $state $matches.file?
 }
 
 def preview-rev-or-file [width state matches] {
@@ -184,12 +199,16 @@ def preview-rev-or-file [width state matches] {
   }
 
   ( ^jj log -r $matches.commit_id --color always
-      -T 'diff.files().len() ++ " file(s) modified:\n"'
       -n1 --no-graph --git
-      ...(if $matches.file? != null {[$matches.file]} else {[]})
       --ignore-working-copy
       --at-operation $state.selected_operation_id
-  ) | deltau wrapper -s $state.diff_config.double-column-threshold --paging never
+      ...(if $matches.file? != null {[
+        -T ""
+        $matches.file
+      ]} else {[
+        -T '"(" ++ diff.files().len() ++ " file(s) modified)\n"'
+      ]})
+  ) | call-delta $state $matches.file?
 }
 
 def --wrapped "main preview" [state_file: path, ...contents: string] {

@@ -22,9 +22,12 @@ export def layout-flags [side_by_side_threshold: int] {
     default (tput cols) |
     into int
   [ --width $width
-    ...(if $width >= $side_by_side_threshold {
-        ["--side-by-side"]
-      } else {[]}
+    ...(if $width >= $side_by_side_threshold {[
+        "--side-by-side"
+      ]} else {[
+        --line-numbers 
+        --line-numbers-right-format ""
+      ]}
     )
   ]
 }
