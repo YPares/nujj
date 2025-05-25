@@ -58,11 +58,12 @@ def print-evolog [width: int, state: record] {
 def print-files [state] {
   let jj_out = (
     ^jj log -r $state.selected_commit_id --no-graph
-      -T $"self.diff\().files\().map\(|x|
-            '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
-            commit_id.shortest\(8) ++ '(char us)' ++
-            '● (char fs)(ansi $state.color_config.filepath)' ++ x.path\() ++ '(ansi reset)(char fs) [' ++ x.status\() ++ ']'
-          ).join\('(char gs)')"
+      --template
+          $"self.diff\().files\().map\(|x|
+              '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
+              commit_id.shortest\(8) ++ '(char us)' ++
+              '● (char fs)(ansi $state.color_config.filepath)' ++ x.path\() ++ '(ansi reset)(char fs) [' ++ x.status\() ++ ']'
+            ).join\('(char gs)')"
       --ignore-working-copy
       --at-operation $state.selected_operation_id
   ) | tr (char gs) \0 | complete
@@ -174,7 +175,8 @@ def call-delta [state file] {(
 def preview-op [_width state matches] {
   ( ^jj op show
       $matches.change_or_op_id
-      --no-graph --patch --git
+      --no-graph
+      --stat --patch --git
       --color always
       --ignore-working-copy
   ) | call-delta $state $matches.file?
@@ -182,11 +184,14 @@ def preview-op [_width state matches] {
 
 
 def preview-evo [_width state matches] {
-  ( ^jj evolog -n1 -T "change_id ++ ' at ' ++ commit_id ++ ':\n'"
+  ( ^jj evolog -n1
       -r $matches.commit_id
-      --no-graph --patch --git
+      --template "'Changes in ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ '\n\n'"
+      --no-graph
+      --stat --patch --git
       --color always
       --ignore-working-copy
+      --at-operation $state.selected_operation_id
   ) | call-delta $state $matches.file?
 }
 
@@ -194,7 +199,7 @@ def preview-rev-or-file [width state matches] {
   if ($state.diff_config.header) {
     let bookmarks = (
       ^jj log -r $"($matches.commit_id):: & \(bookmarks\() | remote_bookmarks\())"
-        -T 'bookmarks ++ " "'
+        --template 'bookmarks ++ " "'
         --no-graph
         --color always
         --ignore-working-copy
@@ -202,8 +207,9 @@ def preview-rev-or-file [width state matches] {
     ) | complete
     let rev_infos = (
       ^jj log -r $matches.commit_id
-        -T $"change_id.shortest\(8) ++ '(char fs)' ++ author ++ '(char fs)' ++ author.timestamp\() ++ '(char fs)' ++ commit_id.shortest\(8) ++ 
-            '\n' ++ description"
+        --template
+            $"change_id.shortest\(8) ++ '(char fs)' ++ author ++ '(char fs)' ++ author.timestamp\() ++ '(char fs)' ++ commit_id.shortest\(8) ++ 
+              '\n' ++ description"
         --no-graph
         --color always
         --ignore-working-copy
@@ -235,16 +241,15 @@ def preview-rev-or-file [width state matches] {
     )
   }
 
-  ( ^jj log -r $matches.commit_id --color always
-      -n1 --no-graph --git
+  ( ^jj log -n1
+      -r $matches.commit_id --color always
+      --template ""
+      --no-graph
+      (if $state.current_view == "files" {"--stat"} else {"--summary"})
+      --patch --git
       --ignore-working-copy
       --at-operation $state.selected_operation_id
-      ...(if $matches.file? != null {[
-        -T ""
-        $matches.file
-      ]} else {[
-        -T '"(" ++ diff.files().len() ++ " file(s) modified)\n"'
-      ]})
+      ...(if $matches.file? != null {[$matches.file]} else {[]})
   ) | call-delta $state $matches.file?
 }
 

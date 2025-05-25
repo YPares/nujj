@@ -86,6 +86,9 @@ preview-scroll-down = "preview-down+preview-down+preview-down"
 # Page up/down in log list:
 "alt-down,alt-j" = "page-down"
 "alt-up,alt-k" = "page-up"
+# First/last line in log list:
+"alt-left,alt-h" = "first"
+"alt-right,alt-l" = "last"
 # Page up/down in preview panel:
 page-down = "preview-page-down"
 page-up = "preview-page-up"
