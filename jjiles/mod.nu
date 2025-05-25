@@ -64,7 +64,7 @@ def finalize [finalizers: list<closure>, exc?] {
 # extract the data we need from the other fields
 # 
 # We terminate the template by (char gs) because JJ cannot deal with templates containing NULL
-def mktemplate [...args] {
+def wrap-template [...args] {
   $args |
     each {[$"'(char us)'" $in]} |
     flatten |
@@ -113,6 +113,17 @@ export def get-config [
   )
 }
 
+def get-templates [jj_cfg jjiles_cfg] {
+  {
+    op_log: ($jjiles_cfg.templates.op_log? | default $jj_cfg.templates.op_log)
+    rev_log: ($jjiles_cfg.templates.rev_log? | default $jj_cfg.templates.log)
+    evo_log: ($jjiles_cfg.templates.evo_log? | default $jj_cfg.templates.log)
+    rev_preview: $jjiles_cfg.templates.rev_preview?
+    evo_preview: $jjiles_cfg.templates.evo_preview
+    file_preview: $jjiles_cfg.templates.file_preview?
+  }
+}
+
 # # JJiles. A JJ Watcher.
 #
 # Shows an interactive and auto-updating jj log that allows you to drill down
@@ -154,7 +165,8 @@ export def get-config [
 export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log
-  --template (-T): string # The alias of the jj log template to use
+  --template (-T): string # The alias of the jj log template to use. Will override
+                          # the 'jjiles.templates.rev_log' if given
   --fuzzy # Use fuzzy finding instead of exact match
   --fetch-every (-f): duration # Regularly run jj git fetch
   --at-operation: string
@@ -189,12 +201,7 @@ export def --wrapped main [
   let jjiles_cfg = get-config -j $jj_cfg
   let jj_cfg = get-needed-config-from-jj $jj_cfg
 
-  # We retrieve the user revlog template:
-  let revlog_template = if ($template == null) {
-    $jj_cfg.templates.log
-  } else {
-    $template
-  }
+
   # We retrieve the user default log revset:
   let revisions = if ($revisions == null) {
     $jj_cfg.revsets.log
@@ -202,15 +209,14 @@ export def --wrapped main [
     $revisions
   }
 
-  # We generate from the user oplog/revlog templates new templates
-  # from which fzf can reliably extract the data it needs.
-  let oplog_template = (
-    mktemplate "id.short()" "''" $jj_cfg.templates.op_log
-  )
-  let revlog_template = (
-    mktemplate "change_id.shortest(8)" "commit_id.shortest(8)" $revlog_template
-  )
-  
+  # We retrieve the user-defined templates, and generate from them
+  # new templates from which fzf can reliably extract the data it needs:
+  let templates = get-templates $jj_cfg $jjiles_cfg |
+    update rev_log {if ($template == null) {$in} else {$template}} |
+    update op_log {wrap-template "id.short()" "''" $in} |
+    update rev_log {wrap-template "change_id.shortest(8)" "commit_id.shortest(8)" $in} |
+    update evo_log {wrap-template "change_id.shortest(8)" "commit_id.shortest(8)" $in}
+
   let at_operation = $at_operation | default $at_op
   let do_watch = $at_operation == null
   let at_operation = if $do_watch {"@"} else {
@@ -224,8 +230,7 @@ export def --wrapped main [
 
   {
     is_watching: $do_watch
-    oplog_template: $oplog_template
-    revlog_template: $revlog_template
+    templates: $templates
     jj_revlog_extra_args: $init_view.extra_args
     diff_config: $jjiles_cfg.diff
     color_config: ($jj_cfg.colors | merge $jjiles_cfg.colors.elements)

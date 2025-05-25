@@ -23,7 +23,7 @@ def print-oplog [width: int, state: record] {
   }
   ( ^jj op log
       --color always
-      --template $state.oplog_template
+      --template $state.templates.op_log
       --config $"width=($width)"
       --config $"desc-len=($width / 2 | into int)"
       --ignore-working-copy
@@ -34,7 +34,7 @@ def print-revlog [width: int, state: record] {
   ( ^jj log ...$state.jj_revlog_extra_args
       --revisions $state.revset
       --color always
-      --template $state.revlog_template
+      --template $state.templates.rev_log
       --config $"width=($width)"
       --config $"desc-len=($width / 2 | into int)"
       --ignore-working-copy
@@ -46,7 +46,7 @@ def print-evolog [width: int, state: record] {
   ( ^jj evolog #...$state.jj_revlog_extra_args
       -r $state.selected_change_id
       --color always
-      --template $state.revlog_template
+      --template $state.templates.evo_log
       --config $"width=($width)"
       --config $"desc-len=($width / 2 | into int)"
       --ignore-working-copy
@@ -192,9 +192,6 @@ def call-delta [state file] {(
   deltau wrapper
     -s $state.diff_config.double-column-threshold
     --file-style "omit"
-    #--file-decoration-style $"($state.color_config.filepath) ul"
-    #--file-style $state.color_config.filepath
-    #--hunk-label "#"
     --hunk-header-style
       (if $file != null {"line-number"} else {"file line-number"})
     --hunk-header-file-style $state.color_config.filepath
@@ -207,81 +204,39 @@ def preview-op [_width state matches] {
   ( ^jj op show
       $matches.change_or_op_id
       --no-graph
-      --stat --patch --git
+      --stat --git
       --color always
       --ignore-working-copy
+  ) | call-delta $state $matches.file?
+}
+
+def preview-rev-or-file [width state matches] {
+  let template = if ($matches.file? == null) {
+    $state.templates.rev_preview?
+  } else {
+    $state.templates.file_preview?
+  }
+
+  ( ^jj log -n1
+      -r $matches.commit_id --color always
+      --template ($template | default "")
+      --no-graph
+      --git
+      --ignore-working-copy
+      --at-operation $state.selected_operation_id
+      ...(if $matches.file? != null {[$matches.file]} else {[]})
   ) | call-delta $state $matches.file?
 }
 
 def preview-evo [_width state matches] {
   ( ^jj evolog -n1
       -r $matches.commit_id
-      #--template "'[[ Changes in ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ ' ]]\n'"
-      --template ""
+      --template $state.templates.evo_preview
       --no-graph
-      --stat --patch --git
+      --git
       --color always
       --ignore-working-copy
       --at-operation $state.selected_operation_id
-  ) | call-delta $state $matches.file?
-}
-
-def preview-rev-or-file [width state matches] {
-  if ($state.diff_config.header) {
-    let bookmarks = (
-      ^jj log -r $"($matches.commit_id):: & \(bookmarks\() | remote_bookmarks\())"
-        --template 'bookmarks ++ " "'
-        --no-graph
-        --color always
-        --ignore-working-copy
-        --at-operation $state.selected_operation_id
-    ) | complete
-    let rev_infos = (
-      ^jj log -r $matches.commit_id
-        --template
-            $"change_id.shortest\(8) ++ '(char fs)' ++ author ++ '(char fs)' ++ author.timestamp\() ++ '(char fs)' ++ commit_id.shortest\(8) ++ 
-              '\n' ++ description"
-        --no-graph
-        --color always
-        --ignore-working-copy
-        --at-operation $state.selected_operation_id
-      ) | lines
-    let message = $rev_infos | slice 1.. | str join "\n"
-    let message = if ($message | str trim | is-empty) {"(no description)"} else {$message}
-    let bookmarks = $bookmarks.stdout | str trim
-    let bookmarks = if ($bookmarks | is-empty) {""} else {$"(char fs)($bookmarks)"}
-    let rewrapped_header = $"($rev_infos.0 | str replace -a ' ' (char rs))($bookmarks)" |
-      str replace -a (char fs) " " |
-      ^fmt -w ($width | $in * 1.9 | into int) | # hack: fmt doesn't account for ansi color codes
-      str replace -a (char rs) " "
-    let rewrapped_message = $message |
-      str replace -a "\n" "\n\n" | # fmt will not preserve single newlines
-      ^fmt -w ($width - 4) |
-      str replace -a "\n\n" "\n" |
-      lines
-    let title = $rewrapped_message | take until {$in =~ '^\s*$'} |
-      each {$"(ansi default_reverse) ($in) (ansi reset)"}
-    let message_rest = $rewrapped_message | slice ($title | length)..
-
-    ( print
-        $rewrapped_header
-        "┌"
-        ...($title | append $message_rest | each {$"│ ($in)"})
-        "└"
-        ""
-    )
-  }
-
-  ( ^jj log -n1
-      -r $matches.commit_id --color always
-      #--template "'[[ ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ ' ]]\n'"
-      --template ""
-      --no-graph
-      (if $state.current_view == "files" {"--stat"} else {"--summary"})
-      --patch --git
-      --ignore-working-copy
-      --at-operation $state.selected_operation_id
-      ...(if $matches.file? != null {[$matches.file]} else {[]})
   ) | call-delta $state $matches.file?
 }
 
