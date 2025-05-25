@@ -110,18 +110,12 @@ def do-update [transition state state_file fzf_pos fzf_selection_contents] {
     [revlog _ back _] => {
       {current_view: oplog}
     }
-    # From revlog into evolog:
-    [revlog true into {change_or_op_id: $change_id}] => {
+    # From revlog into evolog/files:
+    [revlog $evo into {change_or_op_id: $change_id, commit_id: $commit_id}] => {
       {
-        current_view: evolog
+        current_view: (if $evo {"evolog"} else {"files"})
         selected_change_id: $change_id
-      }
-    }
-    # From revlog DIRECTLY into files:
-    [revlog false into {change_or_op_id: $change_id, commit_id: $commit_id}] => {
-      {
-        current_view: files
-        selected_change_id: $change_id
+        default_commit_id: $commit_id
         selected_commit_id: $commit_id
       }
     }
@@ -223,7 +217,8 @@ def preview-op [_width state matches] {
 def preview-evo [_width state matches] {
   ( ^jj evolog -n1
       -r $matches.commit_id
-      --template "'[[ Changes in ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ ' ]]\n'"
+      #--template "'[[ Changes in ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ ' ]]\n'"
+      --template ""
       --no-graph
       --stat --patch --git
       --color always
@@ -280,7 +275,8 @@ def preview-rev-or-file [width state matches] {
 
   ( ^jj log -n1
       -r $matches.commit_id --color always
-      --template "'[[ ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ ' ]]\n'"
+      #--template "'[[ ' ++ change_id.shortest(8) ++ ' at ' ++ commit_id.shortest(8) ++ ' ]]\n'"
+      --template ""
       --no-graph
       (if $state.current_view == "files" {"--stat"} else {"--summary"})
       --patch --git
@@ -328,17 +324,19 @@ def "main on-load-finished" [state_file: path, fzf_pos?: int] {
 
   let colors = $state.color_config
 
-  let breadcrumbs = [
-    [view   menu   prefix color             value                       ];
-    [oplog  OpLog  Op     $colors.operation $state.selected_operation_id]
-    [revlog RevLog Rev    $colors.revision  $state.selected_change_id?  ]
-    [evolog EvoLog Commit $colors.commit    $state.selected_commit_id?  ]
-    [files  Files  File   $colors.filepath  null                        ]
-  ]
-
-  let breadcrumbs = if $state.is_evolog_shown {$breadcrumbs} else {
-    $breadcrumbs | where view != evolog
+  let ev_items = if $state.is_evolog_shown {
+    [EvoLog     Commit    ""  $colors.commit $state.selected_commit_id?]
+  } else {
+    ["(EvoLog)" "(Commit" ")" default_dimmed $state.default_commit_id? ]
   }
+
+  let breadcrumbs = [
+    [view   menu        prefix      suffix      color             value                       ];
+    [oplog  OpLog       Op          ""          $colors.operation $state.selected_operation_id]
+    [revlog RevLog      Rev         ""          $colors.revision  $state.selected_change_id?  ]
+    [evolog $ev_items.0 $ev_items.1 $ev_items.2 $ev_items.3       $ev_items.4                 ]
+    [files  Files       File        ""          $colors.filepath  null                        ]
+  ]
 
   let before = $breadcrumbs | take until {$in.view == $state.current_view?}
   let num_before = $before | length
@@ -347,7 +345,7 @@ def "main on-load-finished" [state_file: path, fzf_pos?: int] {
 
   let header = [
     ...($before | each {|x|
-      $"($x.prefix) (ansi $x.color)($x.value)(ansi reset)"
+      $"($x.prefix) (ansi $x.color)($x.value)(ansi reset)($x.suffix)"
     })
     ...(if ($current != null) {
       [$"(ansi $"($current.color)_reverse")($current.menu)(ansi reset)"]
