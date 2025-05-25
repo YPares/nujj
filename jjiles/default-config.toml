@@ -42,8 +42,8 @@ preview-border = "high-contrast"
 
 # Will be passed straight to fzf --bind. See `man fzf` for more info:
 [jjiles.bindings.fzf]
-# Empty search bar, or (if already empty) quit without printing anything:
-"esc" = "cancel"
+# Clear searchbar, or (if already empty) qui without printing anything:
+"ctrl-c" = "cancel"
 # Quit and print the currently selected commit/operation:
 "ctrl-q,ctrl-g" = "accept"
 # Scroll log list with mouse wheel (repeated to scroll faster):

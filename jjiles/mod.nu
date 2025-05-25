@@ -83,10 +83,10 @@ def mktemplate [...args] {
 # - Return: open/close the preview panel (showing the diff of a revision)
 # - Ctrl+f or F3: toggle the search field on/off
 # - Ctrl+r / Ctrl+b / Ctrl+t:
-#     Open the preview panel (showing the diff) at the right/bottom/top (repeat to change the panel size)
-# - Esc: empty search field or (if already empty) exit
+#     open the preview panel (showing the diff) at the right/bottom/top (repeat to change the panel size)
+# - Esc: close the preview panel or (if already closed) exit
+# - Ctrl+c: empty search field or (if already empty) exit
 # - Ctrl+q: exit and output infos about selected line
-# - Ctrl+c: exit immediately
 #
 # # Notes about using custom JJ log templates
 # 
@@ -266,6 +266,10 @@ export def --wrapped main [
       clear-query
       ...(cond (not $cfg.interface.search-bar-visible) hide-input)
     ]
+    resize: [
+      "execute(tput reset)" # Avoids glitches in the fzf interface when terminal is resized
+      refresh-preview
+    ]
     load: (cmd -c transform on-load-finished $state_file)
     
     ctrl-r: [
@@ -286,6 +290,7 @@ export def --wrapped main [
 
     "ctrl-f,f3":     [clear-query, toggle-input]
     enter:           [toggle-preview, show-header]
+    esc:             [close, show-header]
   }
 
   let conflicting_keys = $main_bindings | used-keys | join ($cfg.bindings.fzf | used-keys) key
