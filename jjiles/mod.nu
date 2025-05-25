@@ -299,6 +299,7 @@ export def --wrapped main [
   let main_bindings = {
     shift-up: up
     shift-down: down
+    ctrl-space: jump
     $back_keys: [
       $on_load_started_commands
       (cmd update-list back $state_file "{n}" "{}")
