@@ -362,6 +362,7 @@ def "main on-load-finished" [state_file: path, fzf_pos?: int] {
   let help = [
     ...(if ($state.current_view == revlog) {[$"Shown revs: (ansi $colors.revision)($state.revset)"]} else {[]})
     "Ctrl+v: Toggle evolog"
+    "Shift+arrows: Navigate"
     "Return: Toggle preview"
   ] | str join $"(ansi default_dimmed) | "
 

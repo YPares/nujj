@@ -113,36 +113,42 @@ export def get-config [
 
 # # JJiles. A JJ Watcher.
 #
-# Shows an interactive and auto-updating jj log that allows you to drill down into revisions.
-# By default, it will refresh everytime a jj command modifies the repository.
-# Additionally, JJiles can be told to automatically snapshot the working copy and refresh
-# upon changes to a local folder with --watch.
+# Shows an interactive and auto-updating jj log that allows you to drill down
+# into revisions. By default, it will refresh everytime a jj command modifies
+# the repository. Additionally, JJiles can be told to automatically snapshot
+# the working copy and refresh upon changes to a local folder with --watch.
 #
 # # Main key bindings
 #
-# - Right & left arrows: go into/out of a revision (to preview only specific files)
+# - Shift+right & left arrows: go into/out of a revision (to preview only
+#   specific files)
 # - Return: open/close the preview panel (showing the diff of a revision)
 # - Ctrl+f or F3: toggle the search field on/off
 # - Ctrl+r / Ctrl+b / Ctrl+t:
-#     open the preview panel (showing the diff) at the right/bottom/top (repeat to change the panel size)
+#   open the preview panel (showing the diff) at the right/bottom/top
+#   (repeat to change the panel size)
 # - Esc: close the preview panel or (if already closed) exit
 # - Ctrl+c: empty search field or (if already empty) exit
-# - Ctrl+q: exit and output infos about selected line
+# - Ctrl+q: exit and output infos about selected operation/revision/commit/file
 #
 # # Notes about using custom JJ log templates
-# 
-# JJiles will expose to your JJ templates a few config values they can use via the `config(...)` jj template function:
-# - `width`: will be set to the width of the terminal window running jj log
-# - `desc-len`: will be set to half this width (as JJ template language does not support basic arithmetic for now),
-#   to give an acceptable size at which to truncate commit description headers:
-#   `truncate_end(config("desc-len").as_integer(), description.first_line())`
+#
+# JJiles will expose to your JJ templates a few config values they can use via
+# the `config(...)` jj template function: - `width`: will be set to the width
+# of the terminal window running jj log - `desc-len`: will be set to half this
+# width (as JJ template language does not support basic arithmetic for now),
+# to give an acceptable size at which to truncate commit description headers.
+#
+# For example:
+# `truncate_end(config("desc-len").as_integer(), description.first_line())`
 #
 # # User configuration
-# 
-# JJiles UI, keybindings and colors can be configured via a `[jjiles]` section in your ~/.config/jj/config.toml.
 #
-# Run `jjiles get-config` to get the current config as a nushell record.
-# See the `default-config.toml` file in this folder for more information.
+# JJiles UI, keybindings and colors can be configured via a `[jjiles]`
+# section in your ~/.config/jj/config.toml.
+#
+# Run `jjiles get-config` to get the current config as a nushell record. See
+# the `default-config.toml` file in this folder for more information.
 export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log
@@ -236,9 +242,9 @@ export def --wrapped main [
   
   let fzf_port = port
   
-  let back_keys = "left,ctrl-h"
-  let into_keys = "right,ctrl-l"
-  let all_move_keys = $"up,down,($back_keys),($into_keys)"
+  let back_keys = "shift-left,shift-tab,ctrl-h"
+  let into_keys = "shift-right,tab,ctrl-l"
+  let all_move_keys = $"shift-up,up,shift-down,down,($back_keys),($into_keys)"
 
   let on_load_started_commands = $"change-header\((ansi default_bold)...(ansi reset))+unbind\(($all_move_keys))"
 
@@ -291,6 +297,8 @@ export def --wrapped main [
   }
 
   let main_bindings = {
+    shift-up: up
+    shift-down: down
     $back_keys: [
       $on_load_started_commands
       (cmd update-list back $state_file "{n}" "{}")
