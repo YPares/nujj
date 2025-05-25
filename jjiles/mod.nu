@@ -268,6 +268,7 @@ export def --wrapped main [
     ]
     resize: [
       "execute(tput reset)" # Avoids glitches in the fzf interface when terminal is resized
+      (cmd -c transform on-load-finished $state_file "{n}")  # Refresh the header
       refresh-preview
     ]
     load: (cmd -c transform on-load-finished $state_file)
@@ -325,8 +326,7 @@ export def --wrapped main [
       --list-border    $cfg.interface.borders.list
       --preview-border $cfg.interface.borders.preview
       --prompt "Filter: "
-      --ghost "(Ctrl+f to hide)"
-      --info-command $'echo "($revisions) - $FZF_INFO"'
+      --ghost "Ctrl+f to hide"
       --info inline-right
       --pointer "🡆"
 

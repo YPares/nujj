@@ -204,14 +204,18 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
   }
 }
 
-def "main on-load-finished" [state_file: path] {
+def "main on-load-finished" [state_file: path, pos?: int] {
   let state = open $state_file
 
-  let pos = match $state.current_view? {
-    "oplog" => $state.pos_in_oplog
-    "revlog" => ($state.pos_in_revlog | get -i $state.selected_operation_id | default 0)
-    "files" => ($state.pos_in_files | get -i $state.selected_change_id | default 0)
-    _ => 0
+  let pos = if ($pos == null) {
+    match $state.current_view? {
+      "oplog" => $state.pos_in_oplog
+      "revlog" => ($state.pos_in_revlog | get -i $state.selected_operation_id | default 0)
+      "files" => ($state.pos_in_files | get -i $state.selected_change_id | default 0)
+      _ => 0
+    }
+  } else {
+    $pos + 1
   }
 
   let breadcrumbs = [
@@ -238,8 +242,17 @@ def "main on-load-finished" [state_file: path] {
     })
   ] | str join " > "
 
+  let width = $env.FZF_COLUMNS | into int | $in - 4  # to account for border
+
+  let help = [
+    ...(if ($state.current_view == revlog) {[$"Shown revs: (ansi light_magenta)($state.revset)"]} else {[]})
+    $"Return: open preview"
+  ] | str join $"(ansi default_dimmed) | "
+
+  let padding = $width - ($header | ansi strip | str length) - ($help | ansi strip | str length)
+
   print ([
-    $"change-header\(($header))"
+    $"change-header\(($header)(printf $"%($padding)s")(ansi default_dimmed)($help)(ansi reset))"
     $"pos\(($pos))"
   ] | str join "+")
 }
