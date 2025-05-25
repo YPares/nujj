@@ -205,13 +205,19 @@ export def --wrapped main [
   
   let fzf_port = port
   
+  let back_keys = "left,ctrl-h"
+  let into_keys = "right,ctrl-l"
+  let all_move_keys = $"up,down,($back_keys),($into_keys)"
+
+  let on_load_started_commands = $"change-header\((ansi default_bold)...(ansi reset))+unbind\(($all_move_keys))"
+  
   let jj_watcher_id = if ($freeze_at_op == null) {
     let jj_folder = $"(^jj root)/.jj"
     $watched_files = $jj_folder | append $watched_files
     ^jj debug snapshot
     let id = job spawn {
       watch $jj_folder -q {
-        ( cmd update-list refresh $state_file "{n}" "{}" |
+        ( $"($on_load_started_commands)+(cmd update-list refresh $state_file "{n}" "{}")" |
             http post $"http://localhost:($fzf_port)"
         )
       }
@@ -251,17 +257,15 @@ export def --wrapped main [
     _ => "16"
   }
 
-  let header_loading_cmd = $"change-header\((ansi default_bold)...(ansi reset))"
-  
   let main_bindings = {
-    "left,ctrl-h": [
-      $header_loading_cmd
+    $back_keys: [
+      $on_load_started_commands
       (cmd update-list back $state_file "{n}" "{}")
       clear-query
       ...(cond (not $cfg.interface.search-bar-visible) hide-input)
     ]
-    "right,ctrl-l": [
-      $header_loading_cmd
+    $into_keys: [
+      $on_load_started_commands
       (cmd update-list into $state_file "{n}" "{}")
       clear-query
       ...(cond (not $cfg.interface.search-bar-visible) hide-input)
@@ -271,7 +275,10 @@ export def --wrapped main [
       (cmd -c transform on-load-finished $state_file "{n}")  # Refresh the header
       refresh-preview
     ]
-    load: (cmd -c transform on-load-finished $state_file)
+    load: [
+      (cmd -c transform on-load-finished $state_file)
+      $"rebind\(($all_move_keys))"
+    ]
     
     ctrl-r: [
       "change-preview-window(right,80%|right,50%)"
