@@ -157,15 +157,19 @@ def preview-rev-or-file [width state matches] {
       --ignore-working-copy
       --at-operation $state.selected_operation_id
     ) | lines
-  let message = $rev_infos | slice 2.. | str join "\n" | str trim
-  let message = if ($message | is-empty) {"(no description)"} else {$message}
+  let message = $rev_infos | slice 2.. | str join "\n"
+  let message = if ($message | str trim | is-empty) {"(no description)"} else {$message}
   let bookmarks = $bookmarks.stdout | str trim
   let bookmarks = if ($bookmarks | is-empty) {""} else {$"(char fs)($bookmarks)"}
   let rewrapped_header = $"($rev_infos.0 | str replace -a ' ' (char rs))($bookmarks)" |
     str replace -a (char fs) " " |
     ^fmt -w ($width | $in * 1.9 | into int) | # hack: fmt doesn't account for ansi color codes
     str replace -a (char rs) " "
-  let rewrapped_message = $message | ^fmt -w ($width - 4) | lines
+  let rewrapped_message = $message |
+    str replace -a "\n" "\n\n" | # fmt will not preserve single newlines
+    ^fmt -w ($width - 4) |
+    str replace -a "\n\n" "\n" |
+    lines
   let title = $rewrapped_message | take until {$in =~ '^\s*$'} |
     each {$"(ansi default_reverse) ($in) (ansi reset)"}
   let message_rest = $rewrapped_message | slice ($title | length)..
