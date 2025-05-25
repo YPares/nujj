@@ -210,13 +210,15 @@ export def --wrapped main [
   let all_move_keys = $"up,down,($back_keys),($into_keys)"
 
   let on_load_started_commands = $"change-header\((ansi default_bold)...(ansi reset))+unbind\(($all_move_keys))"
+
+  let repo_root = ^jj root
+  let repo_jj_folder = $repo_root | path join ".jj"
   
   let jj_watcher_id = if ($freeze_at_op == null) {
-    let jj_folder = $"(^jj root)/.jj"
-    $watched_files = $jj_folder | append $watched_files
+    $watched_files = $repo_jj_folder | append $watched_files
     ^jj debug snapshot
     let id = job spawn {
-      watch $jj_folder -q {
+      watch $repo_jj_folder -q {
         ( $"($on_load_started_commands)+(cmd update-list refresh $state_file "{n}" "{}")" |
             http post $"http://localhost:($fzf_port)"
         )
@@ -333,11 +335,13 @@ export def --wrapped main [
       --list-border    $cfg.interface.borders.list
       --preview-border $cfg.interface.borders.preview
       --prompt "Filter: "
-      --ghost "Ctrl+f to hide"
+      --ghost "Ctrl+f to hide, Ctrl+p/n for history"
       --info inline-right
 
       --preview-window "right,50%,hidden,wrap"
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
+
+      --history ($repo_jj_folder | path join "jjiles_history")
 
       ...(cond ($jj_watcher_id != null) --listen $fzf_port)
 
