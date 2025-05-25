@@ -24,6 +24,9 @@ list = "none"
 preview = "line"
 
 [jjiles.diff]
+# Display a header above the diff of a change (change id, author, branches that contain this
+# change and  description)
+header = true
 # JJiles default behaviour is to generate single-column diffs, and to switch
 # to double-column when it has enough space (ie. when the preview panel has at
 # least a certain width, in number of characters per line). This parameter
