@@ -228,7 +228,9 @@ export def --wrapped main [
     selected_operation_id: $operation
     pos_in_revlog: {} # indexed by operation_id
     selected_change_id: null
-    pos_in_files: {} # indexed by change_id
+    pos_in_evolog: {} # indexed by change_id
+    selected_commit_id: null
+    pos_in_files: {} # indexed by commit_id
   } | save $state_file
   
   let fzf_port = port

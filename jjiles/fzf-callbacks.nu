@@ -43,9 +43,21 @@ def print-revlog [width: int, state: record] {
   ) | replace-template-ending
 }
 
-def print-files [state: record, change_id: string] {
+def print-evolog [width: int, state: record] {
+  ( ^jj evolog #...$state.jj_revlog_extra_args
+      -r $state.selected_change_id
+      --color always
+      --template $state.revlog_template
+      --config $"width=($width)"
+      --config $"desc-len=($width / 2 | into int)"
+      --ignore-working-copy
+      --at-operation $state.selected_operation_id
+  ) | replace-template-ending
+}
+
+def print-files [state] {
   let jj_out = (
-    ^jj log -r $change_id --no-graph
+    ^jj log -r $state.selected_commit_id --no-graph
       -T $"self.diff\().files\().map\(|x|
             '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
             commit_id.shortest\(8) ++ '(char us)' ++
@@ -74,9 +86,10 @@ def --wrapped "main update-list" [
   
   # We store the current position of the cursor:
   let cell = match $state.current_view {
-    "oplog" => [pos_in_oplog]
+    "oplog"  => [pos_in_oplog]
     "revlog" => [pos_in_revlog $state.selected_operation_id] 
-    "files" => [pos_in_files $state.selected_change_id]
+    "evolog" => [pos_in_evolog $state.selected_change_id]
+    "files"  => [pos_in_files $state.selected_commit_id]
   }
   if $cell != null {
     $state = $state | upsert ($cell | into cell-path) ($fzf_pos + 1)
@@ -95,16 +108,27 @@ def --wrapped "main update-list" [
     [revlog back _] => {
       {current_view: oplog}
     }
-    # From revlog into files:
+    # From revlog into evolog:
     [revlog into {change_or_op_id: $change_id}] => {
       {
-        current_view: files
+        current_view: evolog
         selected_change_id: $change_id
+      }
+    }
+    # From evolog back into revlog:
+    [evolog back _] => {
+      {current_view: revlog}
+    }
+    # From evolog into files:
+    [evolog into {commit_id: $commit_id}] => {
+      {
+        current_view: files
+        selected_commit_id: $commit_id
       }
     }
     # From files back to revlog:
     [files back _] => {
-      {current_view: revlog}
+      {current_view: evolog}
     }
   }
 
@@ -119,11 +143,14 @@ def --wrapped "main update-list" [
     "revlog" => {
       print-revlog $width $state
     }
+    "evolog" => {
+      print-evolog $width $state
+    }
     "files" => {
-      if (not (print-files $state $state.selected_change_id)) {
-        $state = $state | (update current_view revlog)
+      if (not (print-files $state)) {
+        $state = $state | (update current_view evolog)
         $state | save -f $state_file
-        print-revlog $width $state
+        print-evolog $width $state
       }
     }
   }
@@ -147,6 +174,16 @@ def call-delta [state file] {(
 def preview-op [_width state matches] {
   ( ^jj op show
       $matches.change_or_op_id
+      --no-graph --patch --git
+      --color always
+      --ignore-working-copy
+  ) | call-delta $state $matches.file?
+}
+
+
+def preview-evo [_width state matches] {
+  ( ^jj evolog -n1 -T "change_id ++ ' at ' ++ commit_id ++ ':\n'"
+      -r $matches.commit_id
       --no-graph --patch --git
       --color always
       --ignore-working-copy
@@ -223,6 +260,9 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
     [oplog _] => {
       preview-op $width $state $matches
     }
+    [evolog _] => {
+      preview-evo $width $state $matches
+    }
     _ => {
       preview-rev-or-file $width $state $matches
     }
@@ -236,7 +276,8 @@ def "main on-load-finished" [state_file: path, pos?: int] {
     match $state.current_view? {
       "oplog" => $state.pos_in_oplog
       "revlog" => ($state.pos_in_revlog | get -i $state.selected_operation_id | default 0)
-      "files" => ($state.pos_in_files | get -i $state.selected_change_id | default 0)
+      "evolog" => ($state.pos_in_evolog | get -i $state.selected_change_id | default 0)
+      "files" => ($state.pos_in_files | get -i $state.selected_commit_id | default 0)
       _ => 0
     }
   } else {
@@ -246,10 +287,11 @@ def "main on-load-finished" [state_file: path, pos?: int] {
   let colors = $state.color_config
 
   let breadcrumbs = [
-    [view   menu   prefix color             value                        ];
-    [oplog  OpLog  Op     $colors.operation $state.selected_operation_id?]
-    [revlog RevLog Rev    $colors.revision  $state.selected_change_id?   ]
-    [files  Files  File   $colors.filepath  null                         ]
+    [view   menu   prefix color             value                       ];
+    [oplog  OpLog  Op     $colors.operation $state.selected_operation_id]
+    [revlog RevLog Rev    $colors.revision  $state.selected_change_id?  ]
+    [evolog EvoLog Commit $colors.commit    $state.selected_commit_id?  ]
+    [files  Files  File   $colors.filepath  null                        ]
   ]
 
   let before = $breadcrumbs | take until {$in.view == $state.current_view?}
