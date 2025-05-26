@@ -351,17 +351,17 @@ export def --wrapped main [
       (cmd toggle-evolog $state_file "{n}" "{}")
     ]
     ctrl-r: [
-      "change-preview-window(right,83%|right,50%)"
+      "change-preview-window(right,68%|right,83%|right,50%)"
       show-header
       refresh-preview
     ]
     ctrl-b: [
-      "change-preview-window(bottom,50%|bottom,93%)"
+      "change-preview-window(bottom,50%|bottom,75%|bottom,93%)"
       (if ($jjiles_cfg.interface.menu-position == bottom) {"hide-header"} else {"show-header"})
       refresh-preview
     ]
     ctrl-t: [
-      "change-preview-window(top,50%|top,93%)"
+      "change-preview-window(top,50%|top,75%|top,93%)"
       (if ($jjiles_cfg.interface.menu-position == top) {"hide-header"} else {"show-header"})
       refresh-preview
     ]
