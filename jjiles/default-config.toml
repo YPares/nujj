@@ -26,10 +26,12 @@
 fzf-style = "default"
 ## Where to place the header (showing the breadcrumbs) and the search bar:
 menu-position = "top"
-## Whether the search bar is visible by default or not:
-search-bar-visible = true
 ## Whether the evolog is browsable by default or not:
 evolog-toggled-on = false
+## Whether the search bar is visible by default or not:
+show-searchbar = true
+## Whether the keybidings are shown or not:
+show-keybindings = true
 
 ## Which style of borders to draw around the various elements of the interface.
 ## See `man fzf` for more info:

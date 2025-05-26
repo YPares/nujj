@@ -131,19 +131,14 @@ def get-templates [jj_cfg jjiles_cfg] {
 # the repository. Additionally, JJiles can be told to automatically snapshot
 # the working copy and refresh upon changes to a local folder with --watch.
 #
-# # Main key bindings
+# # User configuration
 #
-# - Shift+right & left arrows: go into/out of a revision (to preview only
-#   specific files)
-# - Return: open/close the preview panel (showing the diff of a revision)
-# - Ctrl+f or F3: toggle the search field on/off
-# - Ctrl+r / Ctrl+b / Ctrl+t:
-#   open the preview panel (showing the diff) at the right/bottom/top
-#   (repeat to change the panel size)
-# - Esc: close the preview panel or (if already closed) exit
-# - Ctrl+c: empty search field or (if already empty) exit
-# - Ctrl+q: exit and output infos about selected operation/revision/commit/file
+# JJiles UI, keybindings and colors can be configured via a `[jjiles]`
+# section in your ~/.config/jj/config.toml.
 #
+# Run `jjiles get-config` to get the current config as a nushell record. See
+# the `default-config.toml` file in this folder for more information.
+# 
 # # Notes about using custom JJ log templates
 #
 # JJiles will expose to your JJ templates a few config values they can use via
@@ -154,14 +149,6 @@ def get-templates [jj_cfg jjiles_cfg] {
 #
 # For example:
 # `truncate_end(config("desc-len").as_integer(), description.first_line())`
-#
-# # User configuration
-#
-# JJiles UI, keybindings and colors can be configured via a `[jjiles]`
-# section in your ~/.config/jj/config.toml.
-#
-# Run `jjiles get-config` to get the current config as a nushell record. See
-# the `default-config.toml` file in this folder for more information.
 export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log
@@ -224,18 +211,19 @@ export def --wrapped main [
   }
 
   let tmp_dir = mktemp --directory
-  $finalizers = {rm -rf $tmp_dir} | append $finalizers
+  $finalizers = {rm -rf $tmp_dir; std log debug $"($tmp_dir) deleted"} | append $finalizers
   
   let state_file = [$tmp_dir state.nuon] | path join
 
   {
+    show_keybindings: $jjiles_cfg.interface.show-keybindings
     is_watching: $do_watch
     templates: $templates
     jj_revlog_extra_args: $init_view.extra_args
     diff_config: $jjiles_cfg.diff
     color_config: ($jj_cfg.colors | merge $jjiles_cfg.colors.elements)
     revset: $revisions
-    is_evolog_shown: $jjiles_cfg.interface.evolog-toggled-on
+    evolog_toggled_on: $jjiles_cfg.interface.evolog-toggled-on
     current_view: $init_view.view
     pos_in_oplog: 0
     selected_operation_id: $at_operation
@@ -246,6 +234,7 @@ export def --wrapped main [
     selected_commit_id: null
     pos_in_files: {} # indexed by change_id or commit_id
   } | save $state_file
+  std log debug $"($state_file) written"
   
   let fzf_port = port
   
@@ -269,7 +258,7 @@ export def --wrapped main [
         )
       }
     }
-    $finalizers = {job kill $id} | append $finalizers
+    $finalizers = {job kill $id; std log debug $"Job ($id) killed"} | append $finalizers
     $id
   }
 
@@ -280,8 +269,9 @@ export def --wrapped main [
       let pid = open $watchers_witness
       std log debug $"Working copy watchers already started by another jjiles instance \(pid ($pid))"
     } else {
-      $finalizers = {rm -f $watchers_witness} | append $finalizers
+      $finalizers = {rm -f $watchers_witness; std log debug $"($watchers_witness) deleted"} | append $finalizers
       $nu.pid | save $watchers_witness
+      std log debug $"($watchers_witness) created \(with pid ($nu.pid))"
       for w in $to_watch {
         let folder = $repo_root | path join $w.folder
         let pattern = $w.pattern? | default "**/*"
@@ -297,7 +287,7 @@ export def --wrapped main [
             ^jj debug snapshot
           }
         }
-        $finalizers = {job kill $id} | append $finalizers
+        $finalizers = {job kill $id; std log debug $"Job ($id) killed"} | append $finalizers
       }
     }
   }
@@ -311,7 +301,7 @@ export def --wrapped main [
         std log debug $"Job (job id): Ran 'jj git fetch'"
       }
     }
-    $finalizers = {job kill $id} | append $finalizers
+    $finalizers = {job kill $id; std log debug $"Job ($id) killed"} | append $finalizers
   }
 
   let theme = match (deltau theme-flags) {
@@ -328,13 +318,13 @@ export def --wrapped main [
       $on_load_started_commands
       (cmd update-list back $state_file "{n}" "{}")
       clear-query
-      ...(cond (not $jjiles_cfg.interface.search-bar-visible) hide-input)
+      ...(cond (not $jjiles_cfg.interface.show-searchbar) hide-input)
     ]
     $into_keys: [
       $on_load_started_commands
       (cmd update-list into $state_file "{n}" "{}")
       clear-query
-      ...(cond (not $jjiles_cfg.interface.search-bar-visible) hide-input)
+      ...(cond (not $jjiles_cfg.interface.show-searchbar) hide-input)
     ]
     resize: [
       "execute(tput reset)" # Avoids glitches in the fzf interface when terminal is resized
@@ -386,7 +376,7 @@ export def --wrapped main [
         "bottom" => "reverse-list"
       })
       --no-sort --track
-      ...(cond (not $jjiles_cfg.interface.search-bar-visible) --no-input)
+      ...(cond (not $jjiles_cfg.interface.show-searchbar) --no-input)
       ...(cond (not $fuzzy) --exact)
 
       --ansi --color $theme
@@ -399,7 +389,9 @@ export def --wrapped main [
       --list-border    $jjiles_cfg.interface.borders.list
       --preview-border $jjiles_cfg.interface.borders.preview
       --prompt "Filter: "
-      --ghost "Ctrl+f: hide | Ctrl+p or n: navigate history"
+      ...(if $jjiles_cfg.interface.show-keybindings {
+        [--ghost "Ctrl+f: hide | Ctrl+p or n: navigate history"]
+      } else {[]})
       --info inline-right
 
       --preview-window "hidden,wrap"

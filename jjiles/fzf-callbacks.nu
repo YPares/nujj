@@ -57,7 +57,7 @@ def print-evolog [width: int, state: record] {
 # Get the id that will condition where to look for files
 # (either change or commit id), depending on whether evolog is shown
 def get-file-index [state] {
-  if $state.is_evolog_shown {$state.selected_commit_id} else {$state.selected_change_id}
+  if $state.evolog_toggled_on {$state.selected_commit_id} else {$state.selected_change_id}
 }
 
 def print-files [state] {
@@ -97,7 +97,7 @@ def do-update [transition state state_file fzf_pos fzf_selection_contents] {
   }
   
   # We update the state to perform the transition (if any happened):
-  let updates = match [$state.current_view $state.is_evolog_shown $transition $matches] {
+  let updates = match [$state.current_view $state.evolog_toggled_on $transition $matches] {
     # From oplog into revlog:
     [oplog _ into {change_or_op_id: $op_id}] => {
       {
@@ -155,7 +155,7 @@ def do-update [transition state state_file fzf_pos fzf_selection_contents] {
     }
     "files" => {
       if (not (print-files $state)) {
-        if $state.is_evolog_shown {
+        if $state.evolog_toggled_on {
           $state = $state | (update current_view evolog)
           $state | save -f $state_file
           print-evolog $width $state
@@ -182,7 +182,7 @@ def "main toggle-evolog" [state_file: path, fzf_pos: int, ...contents] {
   mut state = open $state_file
   let cur_view = $state.current_view
   $state = $state |
-    update is_evolog_shown {not $in} |
+    update evolog_toggled_on {not $in} |
     update current_view {if $cur_view == evolog {"revlog"} else {$cur_view}}
   $state | save -f $state_file
   do-update refresh $state $state_file (if $cur_view != evolog {$fzf_pos}) $contents
@@ -245,6 +245,20 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
   let width = $env.FZF_PREVIEW_COLUMNS? | default "80" | into int
   let matches = $contents | str join " " | parsing get-matches
 
+  if $state.show_keybindings {
+    let help = [
+      "│ Close:       Enter  | Esc"
+      "│ Move/resize: Ctrl+r | Ctrl+t   | Ctrl+b"
+      "│ Scroll:      PageUp | PageDown | Ctrl+d | Ctrl+u"
+      "└──────────────────────────────────────────────────"
+    ]
+    let max_len = $help | each {str length -g} | math max
+    let padding = ($env.FZF_PREVIEW_COLUMNS | into int) - $max_len
+    let help = $help | each {$"(printf $"%($padding)s")($in)"}
+  
+    print $"(ansi default_dimmed)($help | str join "\n")(ansi reset)"
+  }
+
   match [$state.current_view $matches.change_or_op_id?] {
     [_ null] => {
       print $"(ansi default_italic)\(Nothing to show)(ansi reset)"
@@ -278,7 +292,7 @@ def "main on-load-finished" [state_file: path, fzf_pos?: int] {
 
   let colors = $state.color_config
 
-  let ev_items = if $state.is_evolog_shown {
+  let ev_items = if $state.evolog_toggled_on {
     [EvoLog     Commit    ""  $colors.commit $state.selected_commit_id?]
   } else {
     ["(EvoLog)" "(Commit" ")" default_dimmed $state.default_commit_id? ]
@@ -312,11 +326,15 @@ def "main on-load-finished" [state_file: path, fzf_pos?: int] {
   let width = $env.FZF_COLUMNS | into int | $in - 4  # to account for border
 
   let help = [
-    ...(if ($state.current_view == revlog) {[$"Shown revs: (ansi $colors.revision)($state.revset)"]} else {[]})
-    "Ctrl+v: Toggle evolog"
-    "Shift+arrows: Navigate"
-    "Return: Toggle preview"
-  ] | str join $"(ansi default_dimmed) | "
+    ...(if ($state.current_view == revlog) {
+      [$"Revset: (ansi reset)(ansi $colors.revision)($state.revset)(ansi default_dimmed)"]
+    } else {[]})
+    ...(if $state.show_keybindings {
+      [ "Shift+arrows: Navigate"
+        "Ctrl+v: Toggle evolog"
+        "Return: Toggle preview" ]
+    } else {[]})
+  ] | str join $" | "
 
   let padding = $width - ($header | ansi strip | str length) - ($help | ansi strip | str length)
 
