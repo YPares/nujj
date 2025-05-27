@@ -246,6 +246,7 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
 
   if $state.show_keybindings {
     let help = [
+      "│ Toggle wrap: Ctrl+w"
       "│ Close:       Enter  | Esc"
       "│ Move/resize: Ctrl+r | Ctrl+t   | Ctrl+b"
       "│ Scroll:      PageUp | PageDown | Ctrl+d | Ctrl+u"

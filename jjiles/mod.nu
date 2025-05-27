@@ -383,7 +383,10 @@ export def --wrapped main [
       } else {[]})
       --info inline-right
 
-      --preview-window "hidden,wrap"
+      --preview-window ([
+        hidden
+        ...(if $jjiles_cfg.interface.preview-line-wrapping {[wrap]} else {[]})
+      ] | str join ",")
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
 
       --history ($repo_jj_folder | path join "jjiles_history")

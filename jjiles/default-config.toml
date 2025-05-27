@@ -32,6 +32,8 @@ evolog-toggled-on = false
 show-searchbar = true
 ## Whether the keybidings are shown or not:
 show-keybindings = true
+## Whether to wrap long lines in the preview panel by default:
+preview-line-wrapping = false
 
 ## Which style of borders to draw around the various elements of the interface.
 ## See `man fzf` for more info:
@@ -70,7 +72,7 @@ rev_preview = '''
 ## The JJ template to be used as a header in the side panel when previewing a commit
 ## (from the EvoLog view):
 evo_preview = '''
-  builtin_log_compact ++ "\n" ++ diff.summary()
+  builtin_log_oneline ++ "\n" ++ diff.summary()
 '''
 
 ## The JJ template to be used as a header in the side panel when previewing a specific
@@ -79,7 +81,7 @@ evo_preview = '''
 ## `%FILE%` will be replaced by jjiles with the file currently being previewed. It cannot
 ## be passed via `config` (like width) because the diff function expects a string literal:
 file_preview = '''
-  builtin_log_compact ++ "\n" ++ self.diff(%FILE%).summary()
+  builtin_log_oneline ++ "\n" ++ self.diff(%FILE%).summary()
 '''
 
 ## Control how the diffs (in the preview panel) will be rendered:
@@ -152,3 +154,5 @@ page-up = "preview-page-up"
 ## Scroll by half a page in preview panel:
 ctrl-d = "preview-half-page-down"
 ctrl-u = "preview-half-page-up"
+## Toggle the wrapping of long lines in the preview panel:
+ctrl-w = "toggle-preview-wrap"
