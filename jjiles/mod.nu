@@ -99,20 +99,6 @@ def get-needed-config-from-jj [
   }
 }
 
-# Get jjiles config
-export def get-config [
-  --jj-config (-j): record # Use this record as jj config instead of reading it from the files.
-                           # Pass an empty record {} to get jjiles default config
-] {
-  let default_config = open $default_config_file
-  let jj_config = if ($jj_config == null) {
-    ^jj config list jjiles | from toml
-  } else {$jj_config}
-  $default_config | get jjiles | merge deep (
-    $jj_config | get -i jjiles | default {}
-  )
-}
-
 def get-templates [jj_cfg jjiles_cfg] {
   {
     op_log: ($jjiles_cfg.templates.op_log? | default $jj_cfg.templates.op_log)
@@ -122,6 +108,100 @@ def get-templates [jj_cfg jjiles_cfg] {
     evo_preview: $jjiles_cfg.templates.evo_preview
     file_preview: $jjiles_cfg.templates.file_preview?
   }
+}
+
+def start-background-jobs [
+  jjiles_cfg: record
+  fetch_every?: duration
+]: nothing -> list<closure> {
+  mut finalizers: list<closure> = []
+
+  let repo_root = ^jj root | path expand -n
+  let repo_jj_folder = $repo_root | path join ".jj"
+
+  let to_watch = $jjiles_cfg.watched? | default []
+  if (not ($to_watch | is-empty)) {
+    let watchers_witness = $repo_jj_folder | path join "jjiles_watching.nuon"
+
+    if ($watchers_witness | path exists) {
+      let pid = open $watchers_witness
+      std log debug $"Working copy watchers already started by another jjiles instance \(pid ($pid))"
+    } else {
+      $finalizers = {rm -f $watchers_witness; std log debug $"($watchers_witness) deleted"} | append $finalizers
+      $nu.pid | save $watchers_witness
+      std log debug $"($watchers_witness) created \(with pid ($nu.pid))"
+      for w in $to_watch {
+        let folder = $repo_root | path join $w.folder
+        let pattern = $w.pattern? | default "**/*"
+        if not ($folder | path exists) {
+          ( finalize $finalizers
+              $"Folder ($folder) defined in [[jiles.watched]] does not exist in the repository" )
+        }
+        let id = job spawn {
+          std log debug $"Job (job id): Watching ($folder) for changes to ($pattern)"
+          watch $folder --glob $pattern -q {|_op, path|
+            # Will update the .jj folder and therefore trigger the jj watcher:
+            ^jj debug snapshot
+            std log debug $"Job (job id): Changes to ($path) detected. Working copy snapshot"
+          }
+        }
+        $finalizers = {job kill $id; std log debug $"Job ($id) killed"} | append $finalizers
+      }
+    }
+  }
+
+  if ($fetch_every != null) {
+    let id = job spawn {
+      std log debug $"Job (job id): Will run 'jj git fetch' every ($fetch_every)"
+      loop {
+        sleep $fetch_every
+        ^jj git fetch
+        std log debug $"Job (job id): Fetched from git"
+      }
+    }
+    $finalizers = {job kill $id; std log debug $"Job ($id) killed"} | append $finalizers
+  }
+
+  $finalizers
+}
+
+# Get jjiles config
+export def get-config [
+  --jj-cfg (-j): record
+    # Use this record as the jj config, instead of reading it from the jj user & repo config files.
+    # Pass an empty record {} to get jjiles default config
+] {
+  let default_config = open $default_config_file
+  let jj_cfg = if ($jj_cfg == null) {
+    ^jj config list jjiles | from toml
+  } else {$jj_cfg}
+  $default_config | get jjiles | merge deep (
+    $jj_cfg | get -i jjiles | default {}
+  )
+}
+
+# Run jjiles watcher & fetcher jobs
+#
+# Subsequent calls to `jjiles` on the same repo will not start them
+export def headless [
+  --fetch-every (-f): duration
+  --quiet (-q) # Do not print debug logs
+] {
+  # Print debug logs. Will be active only for this scope
+  std log set-level (if $quiet {20} else {10})
+
+  let jjiles_cfg = get-config
+  let finalizers = start-background-jobs $jjiles_cfg $fetch_every
+  sleep 0.1sec
+  std log info $"Watching... Ctrl+c to stop"
+  loop {
+    match (input listen) {
+      {modifiers: ["keymodifiers(control)"], code: "c"} => {
+        break
+      }
+    }
+  }
+  finalize $finalizers
 }
 
 # # JJiles. A JJ Watcher.
@@ -176,7 +256,6 @@ export def --wrapped main [
   let jj_cfg = ^jj config list --include-defaults | from toml
   let jjiles_cfg = get-config -j $jj_cfg
   let jj_cfg = get-needed-config-from-jj $jj_cfg
-
 
   # We retrieve the user default log revset:
   let revisions = if ($revisions == null) {
@@ -233,9 +312,8 @@ export def --wrapped main [
 
   let on_load_started_commands = $"change-header\((ansi default_bold)...(ansi reset))+unbind\(($all_move_keys))"
 
-  let repo_root = ^jj root | path expand -n
-  let repo_jj_folder = $repo_root | path join ".jj"
-  
+  let repo_jj_folder = ^jj root | path expand -n | path join ".jj"
+
   let jj_watcher_id = if $do_watch {
     ^jj debug snapshot
     let id = job spawn {
@@ -251,46 +329,8 @@ export def --wrapped main [
     $id
   }
 
-  let watchers_witness = $repo_jj_folder | path join "jjiles_watching.nuon"
-  let to_watch = $jjiles_cfg.watched? | default []
-  if ($do_watch and not ($to_watch | is-empty)) {
-    if ($watchers_witness | path exists) {
-      let pid = open $watchers_witness
-      std log debug $"Working copy watchers already started by another jjiles instance \(pid ($pid))"
-    } else {
-      $finalizers = {rm -f $watchers_witness; std log debug $"($watchers_witness) deleted"} | append $finalizers
-      $nu.pid | save $watchers_witness
-      std log debug $"($watchers_witness) created \(with pid ($nu.pid))"
-      for w in $to_watch {
-        let folder = $repo_root | path join $w.folder
-        let pattern = $w.pattern? | default "**/*"
-        if not ($folder | path exists) {
-          ( finalize $finalizers
-              $"Folder ($folder) defined in [[jiles.watched]] does not exist in the repository" )
-        }
-        let id = job spawn {
-          std log debug $"Job (job id): Watching ($folder) for changes to ($pattern)"
-          watch $folder --glob $pattern -q {|_op, path|
-            std log debug $"Job (job id): Changes to ($path) detected"
-            # Will update the .jj folder and therefore trigger the jj watcher:
-            ^jj debug snapshot
-          }
-        }
-        $finalizers = {job kill $id; std log debug $"Job ($id) killed"} | append $finalizers
-      }
-    }
-  }
-
-  if ($fetch_every != null) {
-    let id = job spawn {
-      std log debug $"Job (job id): Will run 'jj git fetch' every ($fetch_every)"
-      loop {
-        sleep $fetch_every
-        ^jj git fetch
-        std log debug $"Job (job id): Ran 'jj git fetch'"
-      }
-    }
-    $finalizers = {job kill $id; std log debug $"Job ($id) killed"} | append $finalizers
+  if $do_watch {
+    $finalizers = start-background-jobs $jjiles_cfg $fetch_every | append $finalizers
   }
 
   let theme = match (deltau theme-flags) {
