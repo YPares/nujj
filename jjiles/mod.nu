@@ -138,17 +138,6 @@ def get-templates [jj_cfg jjiles_cfg] {
 #
 # Run `jjiles get-config` to get the current config as a nushell record. See
 # the `default-config.toml` file in this folder for more information.
-# 
-# # Notes about using custom JJ log templates
-#
-# JJiles will expose to your JJ templates a few config values they can use via
-# the `config(...)` jj template function: - `width`: will be set to the width
-# of the terminal window running jj log - `desc-len`: will be set to half this
-# width (as JJ template language does not support basic arithmetic for now),
-# to give an acceptable size at which to truncate commit description headers.
-#
-# For example:
-# `truncate_end(config("desc-len").as_integer(), description.first_line())`
 export def --wrapped main [
   --help (-h) # Show this help page
   --revisions (-r): string # Which rev(s) to log

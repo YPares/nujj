@@ -210,16 +210,16 @@ def preview-op [width state matches] {
 
 def preview-rev-or-file [width state matches] {
   let template = if ($matches.file? == null) {
-    $state.templates.rev_preview?
+    $state.templates.rev_preview? | default ""
   } else {
-    $state.templates.file_preview?
+    $state.templates.file_preview? | default "" | str replace -a "%FILE%" ($matches.file | $'"($in)"')
   }
 
   ( call-jj log
       -w $width
       -n1
       -r $matches.commit_id
-      --template ($template | default "")
+      --template $template
       --no-graph
       --git
       --at-operation $state.selected_operation_id

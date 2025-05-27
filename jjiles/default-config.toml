@@ -60,17 +60,27 @@ preview = "line"
 
 ## The JJ template to be used as a header in the side panel when previewing a revision
 ## (from the RevLog view).
+##
+## `config("width")` is provided by jjiles and corresponds to the width (in characters) of
+## the panel in which the template will be used
 rev_preview = '''
   builtin_log_detailed ++ diff.stat(config("width").as_integer())
 '''
 
 ## The JJ template to be used as a header in the side panel when previewing a commit
 ## (from the EvoLog view):
-evo_preview = "builtin_log_compact"
+evo_preview = '''
+  builtin_log_compact ++ "\n" ++ diff.summary()
+'''
 
 ## The JJ template to be used as a header in the side panel when previewing a specific
 ## file diff from a specific revision/commit (from the Files view):
-file_preview = "builtin_log_compact"
+##
+## `%FILE%` will be replaced by jjiles with the file currently being previewed. It cannot
+## be passed via `config` (like width) because the diff function expects a string literal:
+file_preview = '''
+  builtin_log_compact ++ "\n" ++ self.diff(%FILE%).summary()
+'''
 
 ## Control how the diffs (in the preview panel) will be rendered:
 [jjiles.diff]
