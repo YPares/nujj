@@ -12,6 +12,15 @@ def replace-template-ending [] {
   tr (char gs) \0
 }
 
+def --wrapped call-jj [--width (-w): int, ...args] {
+  ( ^jj ...$args
+      --color always
+      --config $"width=($width)"
+      --config $"desc-len=($width / 2 | into int)"
+      --ignore-working-copy
+  )
+}
+
 def print-oplog [width: int, state: record] {
   if $state.is_watching {
     ( print -n
@@ -21,35 +30,23 @@ def print-oplog [width: int, state: record] {
         $"│(char nul)"
     )
   }
-  ( ^jj op log
-      --color always
-      --template $state.templates.op_log
-      --config $"width=($width)"
-      --config $"desc-len=($width / 2 | into int)"
-      --ignore-working-copy
-  ) | replace-template-ending
+  call-jj op log -w $width --template $state.templates.op_log | replace-template-ending
 }
 
 def print-revlog [width: int, state: record] {
-  ( ^jj log ...$state.jj_revlog_extra_args
+  ( call-jj ...$state.jj_revlog_extra_args
+      -w $width
       --revisions $state.revset
-      --color always
       --template $state.templates.rev_log
-      --config $"width=($width)"
-      --config $"desc-len=($width / 2 | into int)"
-      --ignore-working-copy
       --at-operation $state.selected_operation_id
   ) | replace-template-ending
 }
 
 def print-evolog [width: int, state: record] {
-  ( ^jj evolog #...$state.jj_revlog_extra_args
+  ( call-jj evolog #...$state.jj_revlog_extra_args
+      -w $width
       -r $state.selected_change_id
-      --color always
       --template $state.templates.evo_log
-      --config $"width=($width)"
-      --config $"desc-len=($width / 2 | into int)"
-      --ignore-working-copy
       --at-operation $state.selected_operation_id
   ) | replace-template-ending
 }
@@ -60,9 +57,11 @@ def get-file-index [state] {
   if $state.evolog_toggled_on {$state.selected_commit_id} else {$state.selected_change_id}
 }
 
-def print-files [state] {
+def print-files [_width state] {
   let jj_out = (
-    ^jj log -r (get-file-index $state) --no-graph
+    ^jj log
+      -r (get-file-index $state)
+      --no-graph
       --template
           $"self.diff\().files\().map\(|x|
               '(char us)' ++ change_id.shortest\(8) ++ '(char us)' ++
@@ -154,7 +153,7 @@ def do-update [transition state state_file fzf_pos fzf_selection_contents] {
       print-evolog $width $state
     }
     "files" => {
-      if (not (print-files $state)) {
+      if (not (print-files $width $state)) {
         if $state.evolog_toggled_on {
           $state = $state | (update current_view evolog)
           $state | save -f $state_file
@@ -200,13 +199,12 @@ def call-delta [state file] {(
     --paging never
 )}
 
-def preview-op [_width state matches] {
-  ( ^jj op show
+def preview-op [width state matches] {
+  ( call-jj op show
+      -w $width
       $matches.change_or_op_id
       --no-graph
       --stat --git
-      --color always
-      --ignore-working-copy
   ) | call-delta $state $matches.file?
 }
 
@@ -217,25 +215,26 @@ def preview-rev-or-file [width state matches] {
     $state.templates.file_preview?
   }
 
-  ( ^jj log -n1
-      -r $matches.commit_id --color always
+  ( call-jj log
+      -w $width
+      -n1
+      -r $matches.commit_id
       --template ($template | default "")
       --no-graph
       --git
-      --ignore-working-copy
       --at-operation $state.selected_operation_id
       ...(if $matches.file? != null {[$matches.file]} else {[]})
   ) | call-delta $state $matches.file?
 }
 
-def preview-evo [_width state matches] {
-  ( ^jj evolog -n1
+def preview-evo [width state matches] {
+  ( call-jj evolog
+      -w $width
+      -n1
       -r $matches.commit_id
       --template $state.templates.evo_preview
       --no-graph
       --git
-      --color always
-      --ignore-working-copy
       --at-operation $state.selected_operation_id
   ) | call-delta $state $matches.file?
 }
@@ -343,4 +342,3 @@ def "main on-load-finished" [state_file: path, fzf_pos?: int] {
     $"pos\(($fzf_pos))"
   ] | str join "+")
 }
-

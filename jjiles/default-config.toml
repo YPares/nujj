@@ -60,7 +60,9 @@ preview = "line"
 
 ## The JJ template to be used as a header in the side panel when previewing a revision
 ## (from the RevLog view).
-rev_preview = "builtin_log_detailed ++ diff.stat()"
+rev_preview = '''
+  builtin_log_detailed ++ diff.stat(config("width").as_integer())
+'''
 
 ## The JJ template to be used as a header in the side panel when previewing a commit
 ## (from the EvoLog view):
