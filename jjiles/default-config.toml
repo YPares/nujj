@@ -93,7 +93,7 @@ rev_preview = '''
 ## The JJ template to be used as a header in the side panel when previewing a commit
 ## (from the EvoLog view):
 evo_preview = '''
-  builtin_log_oneline ++ "\n" ++ diff.summary()
+  builtin_log_detailed ++ diff.summary()
 '''
 
 ## The JJ template to be used as a header in the side panel when previewing a specific
