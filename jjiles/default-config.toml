@@ -1,24 +1,45 @@
+############################################################################
 ##
 ## These settings will be overriden by those in your user jj config.toml
-## (`$HOME/.config/jj/config.toml`), and then by those in your local repository
-## config.toml (`.jj/repo/config.toml`).  So if you want per-repo color
-## settings, keybindings, etc, JJ has you covered.
+## (`$HOME/.config/jj/config.toml`), and then by those in your local
+## repository config.toml (`.jj/repo/config.toml`). So if you want per-repo
+## color settings, keybindings, etc, JJ has you covered.
 ##
 ## You can copy them to your JJ config as a starting point.
 ##
+############################################################################
+
 
 ## Watcher settings. This is meant to be configured per repository,
 ## and can be repeated for each folder in the repository to watch
-## 
-## WARNING: The watched folders MUST NOT include the .jj folder, which will
-## be watched in any case unless jjiles is started with --at-operation.
 #[[jjiles.watched]]
 ##
 ## The path (relative to project root) to watch:
 #folder = "src"
 ##
-## Which files should be watched for changes in this folder (all by default):
+## A glob pattern. Which files should be watched for changes in this folder
+## (all by default):
 #pattern = "**/*.rs" 
+##
+## A list of glob patterns. Any path matching an entry should be ignored when
+## modified (empty by default). Additionally, any path matching an entry in
+## one of your .gitignore files will be ignored:
+#ignore = ["**/*.bck"]
+
+## Fetcher settings. This is meant to be configured per repository,
+## and can be repeated for each git remote to fetch regularly
+#[[jjiles.fetched]]
+##
+## The remote to fetch:
+#remote = "origin"
+##
+## A list of glob patterns. Which branches to fetch from this remote.
+## Will fetch everything if not specified:
+#branches = ["*"]
+##
+## How often should we fetch it. It should be parseable as a nushell duration type.
+## Will default to 5min if not specified:
+#every = "1min"
 
 ## Global layout settings:
 [jjiles.interface]
