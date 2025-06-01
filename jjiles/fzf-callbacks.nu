@@ -245,18 +245,16 @@ def --wrapped "main preview" [state_file: path, ...contents: string] {
   let matches = $contents | str join " " | parsing get-matches
 
   if $state.show_keybindings {
-    let help = [
-      "│ Toggle wrap: Ctrl+w"
-      "│ Close:       Enter  | Esc"
-      "│ Move/resize: Ctrl+r | Ctrl+t   | Ctrl+b"
-      "│ Scroll:      PageUp | PageDown | Ctrl+d | Ctrl+u"
-      "└──────────────────────────────────────────────────"
-    ]
-    let max_len = $help | each {str length -g} | math max
-    let padding = ($env.FZF_PREVIEW_COLUMNS | into int) - $max_len
-    let help = $help | each {$"(printf $"%($padding)s")($in)"}
+    let help = [[index key];
+      ["Toggle wrap" "Ctrl+w"]
+      ["Close"       "Enter  | Esc"]
+      ["Move/resize" "Ctrl+r | Ctrl+t   | Ctrl+b"]
+      ["Scroll"      "PageUp | PageDown | Ctrl+d | Ctrl+u"]
+    ] | table --expand | lines | reject 1 2 |
+      fill -a right -w ($env.FZF_PREVIEW_COLUMNS | into int) -c " " |
+      str join "\n"
   
-    print $"(ansi default_dimmed)($help | str join "\n")(ansi reset)"
+    print $"(ansi default_dimmed)($help)(ansi reset)"
   }
 
   match [$state.current_view $matches.change_or_op_id?] {
@@ -323,7 +321,8 @@ def "main on-load-finished" [state_file: path, fzf_pos?: int] {
     })
   ] | str join " > "
 
-  let width = $env.FZF_COLUMNS | into int | $in - 4  # to account for border
+  let width = $env.FZF_COLUMNS | into int | $in - 6  # to account for border
+  let help_width = $width - ($header | ansi strip | str length)
 
   let help = [
     ...(if ($state.current_view == revlog) {
@@ -334,12 +333,11 @@ def "main on-load-finished" [state_file: path, fzf_pos?: int] {
         "Ctrl+v: Toggle evolog"
         "Return: Toggle preview" ]
     } else {[]})
-  ] | str join $" | "
-
-  let padding = $width - ($header | ansi strip | str length) - ($help | ansi strip | str length)
+  ] | str join $" | " |
+    fill -a right -w $help_width -c " "
 
   print ([
-    $"change-header\(($header)(printf $"%($padding)s")(ansi default_dimmed)($help)(ansi reset))"
+    $"change-header\(($header)  (ansi default_dimmed)($help)(ansi reset))"
     $"pos\(($fzf_pos))"
   ] | str join "+")
 }
