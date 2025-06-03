@@ -128,14 +128,14 @@ def start-background-jobs [
   mut finalizers: list<closure> = []
 
   let repo_root = ^jj root | path expand -n
-  let repo_jj_folder = $repo_root | path join ".jj"
+  let jj_folder = $repo_root | path join ".jj"
 
   let globally_ignored = git-ignored $repo_root | append [".git/**"]
 
   let to_watch = $jjiles_cfg.watched? | default []
   let to_fetch = $jjiles_cfg.fetched? | default []
 
-  let bg_jobs_witness = $repo_jj_folder | path join jjiles_background_jobs
+  let bg_jobs_witness = $jj_folder | path join jjiles_background_jobs
 
   if (not (($to_watch | is-empty) and ($to_fetch | is-empty))) {
     if ($bg_jobs_witness | path exists) {
@@ -356,14 +356,23 @@ export def --wrapped main [
 
   let on_load_started_commands = $"change-header\((ansi default_bold)...(ansi reset))+unbind\(($all_move_keys))"
 
-  let repo_jj_folder = ^jj root | path expand -n | path join ".jj"
+  let jj_folder = ^jj root | path expand -n | path join ".jj"
 
   let jj_watcher_id = if $do_watch {
-    let folder = $repo_jj_folder | path join repo
+    let repo_folder = $jj_folder | path join repo
+    let repo_folder = match ($repo_folder | path type) {
+      "dir" => $repo_folder
+      "file" => {
+        open $repo_folder
+      }
+      _ => {
+        error make {msg: $"($repo_folder) is neither a file not a folder"}
+      }
+    }
     ^jj debug snapshot
     let job_id = job spawn {
-      std log debug $"Job (job id): Watching ($folder)"
-      watch $folder -q {
+      std log debug $"Job (job id): Watching ($repo_folder)"
+      watch $repo_folder -q {
         std log debug $"Job (job id): Changes to .jj folder detected"
         ( $"($on_load_started_commands)+(cmd update-list refresh $state_file "{n}" "{}")" |
             http post $"http://localhost:($fzf_port)"
@@ -477,7 +486,7 @@ export def --wrapped main [
       ] | str join ",")
       --preview ([nu -n $fzf_callbacks preview $state_file "{}"] | str join " ")
 
-      --history ($repo_jj_folder | path join "jjiles_history")
+      --history ($jj_folder | path join "jjiles_history")
 
       ...(cond ($jj_watcher_id != null) --listen $fzf_port)
 
