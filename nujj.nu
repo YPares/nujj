@@ -50,10 +50,14 @@ export def --wrapped reparent [
 # Rebase the current revision somewhere and replace its previous position by a new one, which we edit
 export def --wrapped kick [
   --help (-h)
+  --message (-m): string # Change the message of the current revision at the same time
   ...rebase_args # Args to give to jj rebase
 ] {
   atomic {
     ^jj new -A "@"
+    if ($message != null) {
+      ^jj desc -m $message -r "@-"
+    }
     ^jj rebase -r "@-" ...$rebase_args
   }
 }
