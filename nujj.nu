@@ -1,5 +1,36 @@
 use ./deltau.nu
 
+def to-group-name [] {
+  str replace -ra "[()'\":,;|]" "" |
+  str replace -ra '[\.\-\s]' "_"
+}
+
+# Used to autocomplete revision args
+export def complete-revs [] {
+  tblog "change_id.shortest(5)" "description.first_line()" | rename value description
+}
+
+# Get the jj log as a table
+export def tblog [
+  --revset (-r): string@complete-revs
+  ...columns: string
+] {
+  let columns = if ($columns | is-empty) {
+      [change_id description "author.name()" "author.timestamp()"]
+    } else {
+      $columns
+    }
+  let parser = $columns | each { $"{($in | to-group-name)}" } | str join (char fs)
+
+  ( ^jj log ...(if $revset != null {[-r $revset]} else {[]})
+       --no-graph
+       -T $"($columns | str join $"++'(char fs)'++") ++ '(char rs)'"
+  ) |
+  str trim --right --char (char rs) |
+  split row (char rs) |
+  parse $parser
+}
+
 # Run a set of jj operations atomically:
 # if one fails, revert back to the original state
 #
@@ -36,8 +67,8 @@ def list-to-revset [] {
 # Add/remove parent(s) to a rev
 export def --wrapped reparent [
   --help (-h)
-  --revision (-r): string = "@" # The rev to rebase
-  ...parents: string # A set of parents each prefixed with '-' or '+'
+  --revision (-r): string@complete-revs = "@" # The rev to rebase
+  ...parents: string@complete-revs # A set of parents each prefixed with '-' or '+'
 ] {
   let added = $parents | parse "+{rev}" | get rev
   let removed = $parents | parse "-{rev}" | get rev
@@ -83,7 +114,7 @@ export def back [
 # and splits the changes that came after in another rev
 export def restore-at [
   restoration_point: string # The past commit to restore the revision at
-  --revision (-r): string = "@" # Which rev to split
+  --revision (-r): string@complete-revs = "@" # Which rev to split
   --no-split (-S) # Drop every change that came after restoration_point instead of splitting
 ] {
   atomic {
@@ -94,36 +125,9 @@ export def restore-at [
   }
 }
 
-def to-group-name [] {
-  str replace -ra "[()'\":,;|]" "" |
-  str replace -ra '[\.\-\s]' "_"
-}
-
-# Get the jj log as a table
-export def tblog [
-  --revset (-r): string
-  ...columns: string
-] {
-  let columns = if ($columns | is-empty) {
-      [change_id description "author.name()" "author.timestamp()"]
-    } else {
-      [change_id ...$columns]
-    }
-  let parser = $columns | each { $"{($in | to-group-name)}" } | str join (char fs)
-
-  ( ^jj log ...(if $revset != null {[-r $revset]} else {[]})
-       --no-graph
-       -T $"($columns | str join $"++'(char fs)'++") ++ '(char rs)'"
-  ) |
-  str trim --right --char (char rs) |
-  split row (char rs) |
-  parse $parser |
-  rename -c {change_id: index}
-}
-
 # Return the bookmarks in some revset as a nushell table
 export def bookmarks-to-table [
-  revset: string = "remote_bookmarks()"
+  revset: string@complete-revs = "remote_bookmarks()"
 ] {
     tblog -r $revset bookmarks "author.name()" "author.timestamp()" |
     rename -c {author_name: author, author_timestamp: date} |
@@ -144,7 +148,7 @@ export def ci [
 # Open a picker to select a bookmark and advance it to its children
 export def adv [
   bookmark?: string
-  --revset (-r): string = "trunk()::@"
+  --revset (-r): string@complete-revs = "trunk()::@"
 ] {
   let bookmark = if $bookmark != null {
     $bookmark
