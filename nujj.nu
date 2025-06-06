@@ -1,34 +1,72 @@
 use ./deltau.nu
 
-def to-group-name [] {
-  str replace -ra "[()'\":,;|]" "" |
-  str replace -ra '[\.\-\s]' "_"
+def split-and-cleanup-rev-ids [col_name] {
+  update $col_name {
+    str trim | split row " " | filter {is-not-empty} |
+    str trim --right --char "*"
+  } |
+  flatten $col_name
+}
+
+# Used to autocomplete bookmark args
+# Lists any bookmark name from the default log output
+export def complete-local-bookmarks [] {
+  (tblog -n
+    {value: local_bookmarks
+     description: $env.nujj-config.completion.description
+    }
+  ) | split-and-cleanup-rev-ids value
 }
 
 # Used to autocomplete revision args
-export def complete-revs [] {
-  tblog "change_id.shortest(5)" "description.first_line()" | rename value description
+# Lists anything that can be used to identify a revision from the default log output
+export def complete-revision-ids [] {
+  (tblog -n
+    {value:
+      "change_id.shortest() ++ ' ' ++ commit_id.shortest() ++ ' '
+       ++ local_bookmarks ++ ' ' ++ remote_bookmarks"
+     description: $env.nujj-config.completion.description
+    }
+  ) | split-and-cleanup-rev-ids value
+}
+
+def to-col-name [] {
+  str replace -ra "[()'\":,;|]" "" |
+  str replace -ra '[\.\-\+\s]' "_"
 }
 
 # Get the jj log as a table
+# 
+# The output table will contain first the columns from anon_templates,
+# then those from --named
 export def tblog [
-  --revset (-r): string@complete-revs
-  ...columns: string
-] {
-  let columns = if ($columns | is-empty) {
-      [change_id description "author.name()" "author.timestamp()"]
+  --revset (-r): string@complete-revision-ids  # Which revisions to log
+  --color (-c)  # Keep JJ colors in output values
+  --named (-n): record = {}
+    # A record of templates, each entry corresponding to a column in the output table
+  ...anon_templates: string
+    # Anynonymous templates whose names in the output table will be derived from the templates' contents themselves
+]: nothing -> table {
+  let templates = if (($named | is-empty) and ($anon_templates | is-empty)) {
+      $env.nujj-config.tblog.default | transpose column template
     } else {
-      $columns
+      $anon_templates | each {{column: ($in | to-col-name), template: $in}} |
+        append ($named | transpose column template)
     }
-  let parser = $columns | each { $"{($in | to-group-name)}" } | str join (char fs)
 
-  ( ^jj log ...(if $revset != null {[-r $revset]} else {[]})
-       --no-graph
-       -T $"($columns | str join $"++'(char fs)'++") ++ '(char rs)'"
+  (^jj log
+    ...(if $revset != null {[-r $revset]} else {[]})
+    ...(if $color {[--color always]} else {[]})
+    --no-graph
+    --template
+      $"($templates | get template | str join $"++'(char fs)'++") ++ '(char rs)'"
   ) |
   str trim --right --char (char rs) |
   split row (char rs) |
-  parse $parser
+  each {
+    split row (char fs) | zip ($templates | get column) |
+    each {{k: $in.1, v: $in.0}} | transpose -rd
+  }
 }
 
 # Run a set of jj operations atomically:
@@ -67,8 +105,8 @@ def list-to-revset [] {
 # Add/remove parent(s) to a rev
 export def --wrapped reparent [
   --help (-h)
-  --revision (-r): string@complete-revs = "@" # The rev to rebase
-  ...parents: string@complete-revs # A set of parents each prefixed with '-' or '+'
+  --revision (-r): string@complete-revision-ids = "@" # The rev to rebase
+  ...parents: string@complete-revision-ids # A set of parents each prefixed with '-' or '+'
 ] {
   let added = $parents | parse "+{rev}" | get rev
   let removed = $parents | parse "-{rev}" | get rev
@@ -114,7 +152,7 @@ export def back [
 # and splits the changes that came after in another rev
 export def restore-at [
   restoration_point: string # The past commit to restore the revision at
-  --revision (-r): string@complete-revs = "@" # Which rev to split
+  --revision (-r): string@complete-revision-ids = "@" # Which rev to split
   --no-split (-S) # Drop every change that came after restoration_point instead of splitting
 ] {
   atomic {
@@ -127,35 +165,17 @@ export def restore-at [
 
 # Return the bookmarks in some revset as a nushell table
 export def bookmarks-to-table [
-  revset: string@complete-revs = "remote_bookmarks()"
+  revset: string@complete-revision-ids = "remote_bookmarks()"
 ] {
-    tblog -r $revset bookmarks "author.name()" "author.timestamp()" |
-    rename -c {author_name: author, author_timestamp: date} |
+    tblog -r $revset bookmarks -n {author: "author.name()", date: "author.timestamp()"} |
     update bookmarks {split row " " | parse "{bookmark}@{remote}"} | flatten --all |
     update date {into datetime}
 }
 
-# Commit and advance the bookmarks
-export def ci [
-  --message (-m): string
+# Move a bookmark to the next commit
+export def advance [
+  bookmark: string@complete-local-bookmarks
 ] {
-  atomic {
-    ^jj commit ...(if $message != null {[-m $message]} else {[]})
-    ^jj bookmark move --from @- --to @
-  }
-}
-
-# Open a picker to select a bookmark and advance it to its children
-export def adv [
-  bookmark?: string
-  --revset (-r): string@complete-revs = "trunk()::@"
-] {
-  let bookmark = if $bookmark != null {
-    $bookmark
-  } else {
-    tblog -r $"($revset) & bookmarks\()" "local_bookmarks.map(|x| x.name())" |
-    rename index b | get b | each {split row " "} | flatten | input list
-  }
   ^jj bookmark move $bookmark --to $"($bookmark)+"
 }
 

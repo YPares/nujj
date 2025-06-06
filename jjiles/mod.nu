@@ -1,5 +1,5 @@
 use ../deltau.nu
-use ../nujj.nu complete-revs
+use ../nujj.nu complete-revision-ids
 use parsing.nu
 
 const jjiles_dir = path self | path dirname
@@ -268,7 +268,7 @@ export def headless [
 # the `default-config.toml` file in this folder for more information.
 export def --wrapped main [
   --help (-h) # Show this help page
-  --revisions (-r): string@complete-revs # Which revision(s) to log
+  --revisions (-r): string@complete-revision-ids # Which revision(s) to log
   --template (-T): string # The alias of the jj log template to use. Will override
                           # the 'jjiles.templates.rev_log' if given
   --fuzzy # Use fuzzy finding instead of exact match
