@@ -140,7 +140,7 @@ def start-background-jobs [
   if (not (($to_watch | is-empty) and ($to_fetch | is-empty))) {
     if ($bg_jobs_witness | path exists) {
       let pid = open $bg_jobs_witness
-      std log debug $"Watcher/fetcher jobs for this repo already started by another instance \(pid ($pid))"
+      std log info $"Watcher/fetcher jobs for this repo already started by another instance \(pid ($pid))"
     } else {
       $finalizers = {
         rm -f $bg_jobs_witness
@@ -236,17 +236,19 @@ export def headless [
   std log set-level (if $quiet {20} else {10})
 
   let jjiles_cfg = get-config
-  let out = start-background-jobs $jjiles_cfg
-  sleep 0.1sec
-  std log info $"Watching... Ctrl+c to stop"
-  loop {
-    match (input listen) {
-      {modifiers: ["keymodifiers(control)"], code: "c"} => {
-        break
+  let finalizers = (start-background-jobs $jjiles_cfg).finalizers
+  if ($finalizers | is-not-empty) {
+    sleep 0.1sec
+    std log info $"Watching... Ctrl+c to stop"
+    loop {
+      match (input listen) {
+        {modifiers: ["keymodifiers(control)"], code: "c"} => {
+          break
+        }
       }
     }
+    finalize $finalizers
   }
-  finalize $out.finalizers
 }
 
 # # JJiles. A JJ Watcher.
@@ -317,10 +319,16 @@ export def --wrapped main [
     update evo_log {wrap-template "change_id.shortest(8)" "commit_id.shortest(8)" $in}
 
   let at_operation = $at_operation | default $at_op
-  let do_watch = $at_operation == null
-  let at_operation = if $do_watch {"@"} else {
+  let do_watch_jj_repo = $at_operation == null
+  let at_operation = if $do_watch_jj_repo {"@"} else {
     ^jj op log --at-operation $at_operation --no-graph -n1 --template 'id.short()' 
   }
+
+  let is_watching_local_files = if $do_watch_jj_repo {
+    let bg_jobs_fins = (start-background-jobs $jjiles_cfg).finalizers
+    $finalizers = $bg_jobs_fins | append $finalizers
+    $bg_jobs_fins | is-not-empty 
+  } else {false}
 
   let tmp_dir = mktemp --directory
   $finalizers = {rm -rf $tmp_dir; std log debug $"($tmp_dir) deleted"} | append $finalizers
@@ -329,7 +337,10 @@ export def --wrapped main [
 
   {
     show_keybindings: $jjiles_cfg.interface.show-keybindings
-    is_watching: $do_watch
+    is_watching: {
+      jj_repo: $do_watch_jj_repo
+      local_files: $is_watching_local_files
+    }
     templates: $templates
     jj_revlog_extra_args: $init_view.extra_args
     diff_config: $jjiles_cfg.diff
@@ -358,7 +369,7 @@ export def --wrapped main [
 
   let jj_folder = ^jj root | path expand -n | path join ".jj"
 
-  let jj_watcher_id = if $do_watch {
+  let jj_watcher_id = if $do_watch_jj_repo {
     let repo_folder = $jj_folder | path join repo
     let repo_folder = match ($repo_folder | path type) {
       "dir" => $repo_folder
@@ -384,10 +395,6 @@ export def --wrapped main [
       std log debug $"Job ($job_id) killed"
     } | append $finalizers
     $job_id
-  }
-
-  if $do_watch {
-    $finalizers = (start-background-jobs $jjiles_cfg).finalizers | append $finalizers
   }
 
   let theme = match (deltau theme-flags) {

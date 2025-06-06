@@ -112,7 +112,7 @@ file_preview = '''
 ## least a certain width, in number of characters per line). This parameter
 ## defines that width threshold. If you don't like double-column diffs,
 ## just set it to some arbitrary high number:
-double-column-threshold = 130
+double-column-threshold = 160
 
 ## Colors used in the rest of the config can be a key in the 'theme-mappings'
 ## section below. In such case, the final color will depend on system
