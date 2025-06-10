@@ -28,6 +28,12 @@ export def complete-revision-ids [] {
   ) | split-and-cleanup-rev-ids value
 }
 
+# Used to autocomplete remote name args
+export def complete-remotes [] {
+  ^jj git remote list | lines |
+    each {split row " " | {value: $in.0, description: $in.1}}
+}
+
 def to-col-name [] {
   str replace -ra "[()'\":,;|]" "" |
   str replace -ra '[\.\-\+\s]' "_"
@@ -81,12 +87,22 @@ export def tblog [
 # Long story short: don't run several of these in parallel, please.
 #
 # Also, it doesn't make them atomic with respect to 'jj undo', which
-# will still only undo the last operation done by the closure
+# will still only undo the last operation done by the closure. This
+# is why we print the 'jj op restore' command to run to undo if the closure
+# succeeded.
 export def atomic [closure] {
   let init_op = ^jj op log --no-graph -n1 -T "id.short()" 
   try {
     do $closure
-    print $"(ansi yellow)Important:(ansi reset) To undo, run 'jj op restore ($init_op)'"
+    let final_op = ^jj op log --no-graph -n1 -T "id.short()" 
+    if $final_op == $init_op {
+      print $">> Still at op ($init_op)"
+    } else {
+      print -r [
+        $">> (ansi yellow)Important:(ansi reset)"
+        $">> This ran several jj commands. To undo, run: (ansi yellow)jj op restore ($init_op)(ansi reset)"
+      ]
+    }
   } catch {|e|
     ^jj op restore $init_op
     error make $e
@@ -110,7 +126,7 @@ export def --wrapped reparent [
 ] {
   let added = $parents | parse "+{rev}" | get rev
   let removed = $parents | parse "-{rev}" | get rev
- 
+
   ( ^jj rebase -s $revision
        -d $"all:\(($revision)- | ($added | list-to-revset)) & ~($removed | list-to-revset)"
   )
@@ -128,6 +144,38 @@ export def --wrapped kick [
       ^jj desc -m $message -r "@-"
     }
     ^jj rebase -r "@-" ...$rebase_args
+  }
+}
+
+# Rebases all revisions tagged with "<base:TARGET_BOOKMARK>" (in their description's first line)
+# and advances each TARGET_BOOKMARK
+export def sync-bases [
+  --fetch (-f): string@complete-remotes
+    # Additionally run 'jj git fetch' on the given remote on the base bookmarks
+] {
+  let bases = tblog --color -r 'subject(glob:"<base:*>")' -n {
+    colored_change_id: "change_id.shortest(8)"
+    subject: "description.first_line()"
+  } | insert change_id {get colored_change_id | ansi strip} |
+      insert bookmark {get subject | parse "<base:{bm}>" | get $.0.bm}
+  atomic {
+    if $fetch != null and ($bases | length) > 0 {
+      print $">> Fetching ($bases.bookmark | each {[(ansi magenta) $in (ansi reset)] | str join ''} | str join ', ') from ($fetch):"
+      ^jj git fetch --remote $fetch ...($bases.bookmark | each {[--branch $in]} | flatten)
+    }
+    for base in $bases {
+      let bookmark_exists = (tblog -r $"present\(($base.bookmark))" change_id | length) > 0
+      if $bookmark_exists {
+        let between = tblog -r $"present\(($base.bookmark)):: & ($base.change_id)-" change_id
+        if ($between | length) == 0 {
+          # $bookmark diverged from $base, we rebase $base:
+          print $">> Rebasing ($base.colored_change_id) onto (ansi magenta)($base.bookmark)(ansi reset):"
+          ^jj rebase -b $base.change_id -d $base.bookmark
+        }
+      }
+      print $">> Setting (ansi magenta)($base.bookmark)(ansi reset):"
+      ^jj bookmark set $base.bookmark -r $"($base.change_id)-"
+    }
   }
 }
 
