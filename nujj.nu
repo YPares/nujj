@@ -61,12 +61,14 @@ export def tblog [
     --template
       $"($templates | get template | str join $"++'(char fs)'++") ++ '(char rs)'"
   ) |
-  str trim --right --char (char rs) |
-  split row (char rs) |
-  each {
-    split row (char fs) | zip ($templates | get column) |
-    each {{k: $in.1, v: $in.0}} | transpose -rd
-  }
+    split row (char rs) |
+    each {|row|
+      if ($row | str trim | is-not-empty) {
+        $row | split row (char fs) |
+          zip ($templates | get column) |
+          each {{k: $in.1, v: $in.0}} | transpose -rd
+      }
+    }
 }
 
 # Run a set of jj operations atomically:
