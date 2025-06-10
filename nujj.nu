@@ -1,5 +1,3 @@
-use ./deltau.nu
-
 def split-and-cleanup-rev-ids [col_name] {
   update $col_name {
     str trim | split row " " | filter {is-not-empty} |
@@ -180,17 +178,3 @@ export def advance [
 ] {
   ^jj bookmark move $bookmark --to $"($bookmark)+"
 }
-
-# Shows the delta diff everytime a folder changes
-export def watch-diff [folder] {
-  watch $folder {
-    clear
-    ^jj diff --git | deltau wrapper
-  }
-}
-
-# Wraps jj diff in delta
-export def --wrapped diff [...args] {
-  ^jj diff --git ...$args | deltau wrapper
-}
-
