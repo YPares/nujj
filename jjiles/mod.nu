@@ -139,9 +139,17 @@ def start-background-jobs [
   let bg_jobs_witness = $jj_folder | path join jjiles_background_jobs
 
   if (not (($to_watch | is-empty) and ($to_fetch | is-empty))) {
-    if ($bg_jobs_witness | path exists) {
-      let pid = open $bg_jobs_witness
-      std log info $"Watcher/fetcher jobs for this repo already started by another instance \(pid ($pid))"
+    let watcher_pid = if ($bg_jobs_witness | path exists) {
+      let pid_from_file = open $bg_jobs_witness | into int
+      if (ps | any {$in.pid == $pid_from_file}) {
+        $pid_from_file
+      } else {
+        std log debug $"Previous watcher process seems dead \(no process with pid ($pid_from_file)). Removing '($bg_jobs_witness)'"
+        rm $bg_jobs_witness
+      }
+    }
+    if ($watcher_pid != null) {
+      std log info $"Watcher/fetcher jobs for this repo already started by another instance \(pid ($watcher_pid)). You can manually remove '($bg_jobs_witness)' if this watcher process is dead"
     } else {
       $finalizers = {
         rm -f $bg_jobs_witness
