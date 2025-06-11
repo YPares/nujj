@@ -1,49 +1,52 @@
 use std log
 
-def split-and-cleanup-rev-ids [col_name] {
-  update $col_name {
-    str trim | split row " " | filter {is-not-empty} |
-    str trim --right --char "*"
-  } |
-    flatten $col_name
-}
+module complete {
+  def split-and-cleanup-rev-ids [col_name] {
+    update $col_name {
+      str trim | split row " " | filter {is-not-empty} |
+      str trim --right --char "*"
+    } |
+      flatten $col_name
+  }
 
-# Used to autocomplete bookmark args Lists any bookmark name from the default
-# log output
-export def complete-local-bookmarks [] {
-  (tblog -n
-    {value: local_bookmarks
-     description: $env.nujj-config.completion.description
-    }
-  ) | split-and-cleanup-rev-ids value
-}
+  # Used to autocomplete bookmark args Lists any bookmark name from the default
+  # log output
+  export def local-bookmarks [] {
+    (tblog -n
+      {value: local_bookmarks
+       description: $env.nujj-config.completion.description
+      }
+    ) | split-and-cleanup-rev-ids value
+  }
 
-# Used to autocomplete revision args Lists anything that can be used to
-# identify a revision from the default log output
-export def complete-revision-ids [] {
-  (tblog -n
-    {value:
-      "change_id.shortest() ++ ' ' ++ commit_id.shortest() ++ ' '
-       ++ local_bookmarks ++ ' ' ++ remote_bookmarks ++ ' '
-       ++ working_copies"
-     description: $env.nujj-config.completion.description
-    }
-  ) | split-and-cleanup-rev-ids value
-}
+  # Used to autocomplete revision args Lists anything that can be used to
+  # identify a revision from the default log output
+  export def revision-ids [] {
+    (tblog -n
+      {value:
+        "change_id.shortest() ++ ' ' ++ commit_id.shortest() ++ ' '
+         ++ local_bookmarks ++ ' ' ++ remote_bookmarks ++ ' '
+         ++ working_copies"
+       description: $env.nujj-config.completion.description
+      }
+    ) | split-and-cleanup-rev-ids value
+  }
 
-# Used to autocomplete remote name args
-export def complete-remotes [] {
-  ^jj git remote list | lines |
-    each {split row " " | {value: $in.0, description: $in.1}}
-}
+  # Used to autocomplete remote name args
+  export def remotes [] {
+    ^jj git remote list | lines |
+      each {split row " " | {value: $in.0, description: $in.1}}
+  }
 
-# Used to autocomplete cap name args
-#
-# 'caps' are commits tagged with "<capping:BOOKMARK>". See the 'cap-off'
-# and 'rebase-caps' commands
-export def complete-caps [] {
-  get-caps-in-revset | each {{value: $in.bookmark, description: $in.change_id}}
+  # Used to autocomplete cap name args
+  #
+  # 'caps' are commits tagged with "<capping:BOOKMARK>". See the 'cap-off'
+  # and 'rebase-caps' commands
+  export def caps [] {
+    get-caps-in-revset | each {{value: $in.bookmark, description: $in.change_id}}
+  }
 }
+export use complete
 
 def to-col-name [] {
   str replace -ra "[()'\":,;|]" "" |
@@ -55,7 +58,7 @@ def to-col-name [] {
 # The output table will contain first the columns from anon_templates,
 # then those from --named
 export def tblog [
-  --revset (-r): string@complete-revision-ids  # Which revisions to log
+  --revset (-r): string@"complete revision-ids"  # Which revisions to log
   --color (-c)  # Keep JJ colors in output values
   --named (-n): record = {}
     # A record of templates, each entry corresponding to a column in the
@@ -157,8 +160,8 @@ def list-to-revset [] {
 # Add/remove parent(s) to a rev
 export def --wrapped reparent [
   --help (-h)
-  --revision (-r): string@complete-revision-ids = "@" # The rev to rebase
-  ...parents: string@complete-revision-ids # A set of parents each prefixed with '-' or '+'
+  --revision (-r): string@"complete revision-ids" = "@" # The rev to rebase
+  ...parents: string@"complete revision-ids" # A set of parents each prefixed with '-' or '+'
 ] {
   let added = $parents | parse "+{rev}" | get rev
   let removed = $parents | parse "-{rev}" | get rev
@@ -177,7 +180,7 @@ export def --wrapped reparent [
 # In any other case it's just a regular 'jj rebase'
 export def --wrapped kick [
   --help (-h)
-  --revision (-r): string@complete-revision-ids = "@"
+  --revision (-r): string@"complete revision-ids" = "@"
     # A revision to rebase
   --message (-m): string
     # Optionally, change the message of the revision to rebase at the same time
@@ -222,9 +225,9 @@ def get-caps-in-revset [
 #
 # If the revision is @, it will be 'kicked' (see 'kick' command doc)
 export def cap-off [
-  --revision (-r): string@complete-revision-ids = "@"
+  --revision (-r): string@"complete revision-ids" = "@"
   --message (-m): string # Change the message of the rebased revision at the same time
-  cap: string@complete-caps
+  cap: string@"complete caps"
 ] {
   atomic -n cap-off {
     match (tblog -r (revs-with-cap-tag $cap) change_id) {
@@ -243,11 +246,11 @@ export def cap-off [
 
 # Rebases onto their BOOKMARK all the revisions in a given revset that are described by "<capping:BOOKMARK>"
 export def rebase-caps [
-  --revset (-r): string@complete-revision-ids
+  --revset (-r): string@"complete revision-ids"
     # Where to look for caps to rebase. The default is defined by $env.nujj-config.caps.revset
     # By default, we will look for caps in all the mutable revisions outside of trunk() connected in some
     # way to "@"
-  --fetch-remote (-f): string@complete-remotes
+  --fetch-remote (-f): string@"complete remotes"
     # Before rebasing, run 'jj git fetch' (on the given remote) on the caps'
     # target bookmarks
   --move-bookmarks (-b)
@@ -299,7 +302,7 @@ export def back [
 # and splits the changes that came after in another rev
 export def restore-at [
   restoration_point: string # The past commit to restore the revision at
-  --revision (-r): string@complete-revision-ids = "@" # Which rev to split
+  --revision (-r): string@"complete revision-ids" = "@" # Which rev to split
   --no-split (-S) # Drop every change that came after restoration_point instead of splitting
 ] {
   atomic -n restore-at {
@@ -312,7 +315,7 @@ export def restore-at [
 
 # Return the bookmarks in some revset as a nushell table
 export def bookmarks-to-table [
-  revset: string@complete-revision-ids = "remote_bookmarks()"
+  revset: string@"complete revision-ids" = "remote_bookmarks()"
 ] {
     tblog -r $revset bookmarks -n {author: "author.name()", date: "author.timestamp()"} |
     update bookmarks {split row " " | parse "{bookmark}@{remote}"} | flatten --all |
@@ -321,7 +324,7 @@ export def bookmarks-to-table [
 
 # Move a bookmark to the next commit
 export def advance [
-  bookmark: string@complete-local-bookmarks
+  bookmark: string@"complete local-bookmarks"
 ] {
   ^jj bookmark move $bookmark --to $"($bookmark)+"
 }
