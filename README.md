@@ -12,13 +12,18 @@ or to any autoloaded nushell script.
 
 ## Main features
 
-- `nujj tblog`: getting the jj log as a structured nushell table
-- `nugh prs`: Getting PRs lists from GitHub as structured nushell tables
 - `jjiles`, a jj _Watcher_: an interactive `jj log` with `fzf` (à la [`jj-fzf`](https://github.com/tim-janik/jj-fzf)),
   with custom jj log templates support, auto-refresh, adaptive diff layout, system theme detection
   (which will also work in [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
   and syntax-highlighting via [`delta`](https://github.com/dandavison/delta).
   Run `jjiles --help` for more info
+- `nujj tblog`: get the jj log as a structured nushell table
+- `nujj atomic`: run some arbitrary nu closure that performs a set of jj operations,
+  and automatically rollback to the initial state if one fails
+- `nujj cap-off` / `nujj rebase-caps`: speed up your [mega-merge workflow](https://ofcr.se/jujutsu-merge-workflow)
+  with automated rebases and bookmark moves driven by simple tags in your revisions descriptions
+- Autocompletion: change ids, bookmark names, etc. autocompletion is provided for most of the `nujj` commands
+- `nugh prs`: Getting PRs lists from GitHub as structured nushell tables
 
 ## Dependencies
 

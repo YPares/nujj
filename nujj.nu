@@ -1,14 +1,15 @@
 use std log
+
 def split-and-cleanup-rev-ids [col_name] {
   update $col_name {
     str trim | split row " " | filter {is-not-empty} |
     str trim --right --char "*"
   } |
-  flatten $col_name
+    flatten $col_name
 }
 
-# Used to autocomplete bookmark args
-# Lists any bookmark name from the default log output
+# Used to autocomplete bookmark args Lists any bookmark name from the default
+# log output
 export def complete-local-bookmarks [] {
   (tblog -n
     {value: local_bookmarks
@@ -17,13 +18,14 @@ export def complete-local-bookmarks [] {
   ) | split-and-cleanup-rev-ids value
 }
 
-# Used to autocomplete revision args
-# Lists anything that can be used to identify a revision from the default log output
+# Used to autocomplete revision args Lists anything that can be used to
+# identify a revision from the default log output
 export def complete-revision-ids [] {
   (tblog -n
     {value:
       "change_id.shortest() ++ ' ' ++ commit_id.shortest() ++ ' '
-       ++ local_bookmarks ++ ' ' ++ remote_bookmarks"
+       ++ local_bookmarks ++ ' ' ++ remote_bookmarks ++ ' '
+       ++ working_copies"
      description: $env.nujj-config.completion.description
     }
   ) | split-and-cleanup-rev-ids value
@@ -35,22 +37,32 @@ export def complete-remotes [] {
     each {split row " " | {value: $in.0, description: $in.1}}
 }
 
+# Used to autocomplete cap name args
+#
+# 'caps' are commits tagged with "<capping:BOOKMARK>". See the 'cap-off'
+# and 'rebase-caps' commands
+export def complete-caps [] {
+  get-caps-in-revset | each {{value: $in.bookmark, description: $in.change_id}}
+}
+
 def to-col-name [] {
   str replace -ra "[()'\":,;|]" "" |
   str replace -ra '[\.\-\+\s]' "_"
 }
 
 # Get the jj log as a table
-# 
+#
 # The output table will contain first the columns from anon_templates,
 # then those from --named
 export def tblog [
   --revset (-r): string@complete-revision-ids  # Which revisions to log
   --color (-c)  # Keep JJ colors in output values
   --named (-n): record = {}
-    # A record of templates, each entry corresponding to a column in the output table
+    # A record of templates, each entry corresponding to a column in the
+    # output table
   ...anon_templates: string
-    # Anynonymous templates whose names in the output table will be derived from the templates' contents themselves
+    # Anynonymous templates whose names in the output table will be derived
+    # from the templates' contents themselves
 ]: nothing -> table {
   let templates = if (($named | is-empty) and ($anon_templates | is-empty)) {
       $env.nujj-config.tblog.default | transpose column template
@@ -76,23 +88,26 @@ export def tblog [
     }
 }
 
-# Run a set of jj operations as atomically as possible, ie. if one fails,
-# revert back to the original state.
+# Run a nushell closure performing a set of jj operations as atomically
+# as possible. Ie. if one operation fails, revert back to the state before
+# the closure started.
 #
-# However, this is not a real DB-like transaction, because it is not isolated:
-# if you run other jj commands in parallel they can get intertwined with
-# those of the closure (and the effect of those parallel operations would
-# be cancelled along if the closure fails, which is probably what you want
-# anyway in such a case)
+# However, this is not a real DB-like transaction, because it is not
+# *isolated*: if you run other jj commands in parallel, they can get intertwined
+# with those of the closure (and the effect of those parallel operations
+# would be cancelled along if the closure fails, which is probably what you
+# want anyway in such a case). Note that this should be much improved when
+# https://github.com/jj-vcs/jj/pull/4457 lands.
 #
-# Long story short: don't run several of these in parallel, please.
+# Long story short: don't run several of these in parallel for now, please.
 #
-# Also, it doesn't make them atomic with respect to 'jj undo', which will
-# still only undo the last operation done by the closure. This is why we
-# print the 'jj op restore' command to run to undo if the closure succeeded.
+# Also, it doesn't make the closure atomic with respect to 'jj undo', which
+# will only undo the *last* jj command executed by the closure. This is why
+# we print the 'jj op restore' command that you can run later to undo the
+# whole closure.
 #
-# Calls to 'atomic' can be nested, in which case the inner calls will just
-# be no-ops.
+# Nesting calls to 'atomic' is allowed. In such a case, the inner calls will
+# just be no-ops.
 export def atomic [
   --name (-n): string = "anonymous-atomic"
     # A name to show in the nushell logs
@@ -153,49 +168,112 @@ export def --wrapped reparent [
   )
 }
 
-# Rebase the current revision somewhere and replace its previous position by a new one, which we edit
+# 'kick' is 'jj rebase', but with a twist.
+#
+# If the revision to rebase is "@", it will be replaced by a new one which we
+# will edit (so we remain a the same place in the history), and all bookmarks
+# pointing to the previous "@" will be moved to this new one
+#
+# In any other case it's just a regular 'jj rebase'
 export def --wrapped kick [
   --help (-h)
-  --message (-m): string # Change the message of the current revision at the same time
+  --revision (-r): string@complete-revision-ids = "@"
+    # A revision to rebase
+  --message (-m): string
+    # Optionally, change the message of the revision to rebase at the same time
   ...rebase_args # Args to give to jj rebase
 ] {
-  atomic {
-    ^jj new -A "@"
+  atomic -n kick {
+    let revision = if ($revision == "@") {
+      ^jj new -A "@"
+      ^jj bookmark move --from "@-" --to "@"
+      "@-"
+    } else {$revision}
     if ($message != null) {
-      ^jj desc -m $message -r "@-"
+      ^jj desc -m $message -r $revision
     }
-    ^jj rebase -r "@-" ...$rebase_args
+    ^jj rebase -r $revision ...$rebase_args
   }
 }
 
-# Rebases all revisions tagged with "<base:TARGET_BOOKMARK>" (in their description's first line)
-# and advances each TARGET_BOOKMARK
-export def sync-bases [
-  --fetch (-f): string@complete-remotes
-    # Additionally run 'jj git fetch' on the given remote on the base bookmarks
-] {
-  let bases = tblog --color -r 'subject(glob:"<base:*>")' -n {
+def cap-tag [pattern] {
+  $"<capping:($pattern)>"
+}
+
+def revs-with-cap-tag [--glob pattern] {
+  $"subject\((if $glob {'glob:'} else {''})'(cap-tag $pattern)')"
+}
+
+# Find the revisions described by "<capping:BOOKMARK>" in some revset
+def get-caps-in-revset [
+  --revset (-r): string
+]: nothing -> table<colored_change_id: string, change_id: string, bookmark: string> {
+  let revset = $revset | default $env.nujj-config.caps.revset
+  tblog --color -r $"($revset) & (revs-with-cap-tag --glob "*")" -n {
     colored_change_id: "change_id.shortest(8)"
     subject: "description.first_line()"
   } | insert change_id {get colored_change_id | ansi strip} |
-      insert bookmark {get subject | parse "<base:{bm}>" | get $.0.bm}
-  atomic {
-    if $fetch != null and ($bases | length) > 0 {
-      print $">> Fetching ($bases.bookmark | each {[(ansi magenta) $in (ansi reset)] | str join ''} | str join ', ') from ($fetch):"
-      ^jj git fetch --remote $fetch ...($bases.bookmark | each {[--branch $in]} | flatten)
+      insert bookmark {get subject | parse (cap-tag "{bm}") | get $.0.bm} |
+      reject subject
+}
+
+# Rebases the given revision under the given cap. A 'cap' is a revision
+# described by <capping:BOOKMARK>
+#
+# If the revision is @, it will be 'kicked' (see 'kick' command doc)
+export def cap-off [
+  --revision (-r): string@complete-revision-ids = "@"
+  --message (-m): string # Change the message of the rebased revision at the same time
+  cap: string@complete-caps
+] {
+  atomic -n cap-off {
+    match (tblog -r (revs-with-cap-tag $cap) change_id) {
+      [] => {
+        error make {msg: $"No revision is described by (cap-tag $cap)"}
+      }
+      [$cap] => {
+        kick -r $revision -m $message -B $cap.change_id
+      }
+      _ => {
+        error make {msg: $"Several revisions are described by (cap-tag $cap)"}
+      }
     }
-    for base in $bases {
-      let bookmark_exists = (tblog -r $"present\(($base.bookmark))" change_id | length) > 0
+  }
+}
+
+# Rebases onto their BOOKMARK all the revisions in a given revset that are described by "<capping:BOOKMARK>"
+export def rebase-caps [
+  --revset (-r): string@complete-revision-ids
+    # Where to look for caps to rebase. The default is defined by $env.nujj-config.caps.revset
+    # By default, we will look for caps in all the mutable revisions outside of trunk() connected in some
+    # way to "@"
+  --fetch-remote (-f): string@complete-remotes
+    # Before rebasing, run 'jj git fetch' (on the given remote) on the caps'
+    # target bookmarks
+  --move-bookmarks (-b)
+    # After rebasing, advance each BOOKMARK to the revision just below its cap, creating
+    # BOOKMARK if it does not exist yet
+] {
+  let caps = get-caps-in-revset -r $revset
+  atomic -n rebase-caps {
+    if $fetch_remote != null and ($caps | length) > 0 {
+      log info $"Fetching ($caps.bookmark | each {[(ansi magenta) $in (ansi reset)] | str join ''} | str join ', ') from ($fetch_remote)"
+      ^jj git fetch --remote $fetch_remote ...($caps.bookmark | each {[--branch $in]} | flatten)
+    }
+    for cap in $caps {
+      let bookmark_exists = (tblog -r $"present\(($cap.bookmark))" change_id | length) > 0
       if $bookmark_exists {
-        let between = tblog -r $"present\(($base.bookmark)):: & ($base.change_id)-" change_id
+        let between = tblog -r $"present\(($cap.bookmark)):: & ($cap.change_id)-" change_id
         if ($between | length) == 0 {
           # $bookmark diverged from $base, we rebase $base:
-          print $">> Rebasing ($base.colored_change_id) onto (ansi magenta)($base.bookmark)(ansi reset):"
-          ^jj rebase -b $base.change_id -d $base.bookmark
+          log info $"Rebasing ($cap.colored_change_id) onto (ansi magenta)($cap.bookmark)(ansi reset)"
+          ^jj rebase -b $cap.change_id -d $cap.bookmark
         }
       }
-      print $">> Setting (ansi magenta)($base.bookmark)(ansi reset):"
-      ^jj bookmark set $base.bookmark -r $"($base.change_id)-"
+      if $move_bookmarks {
+        log info $"Setting (ansi magenta)($cap.bookmark)(ansi reset) to revision just before ($cap.colored_change_id)"
+        ^jj bookmark set $cap.bookmark -r $"($cap.change_id)-"
+      }
     }
   }
 }
@@ -216,15 +294,15 @@ export def back [
   ^jj op restore $op.id
 }
 
-# Split a revision according to one of its past states (identified by a commit_id).
-# Keeps the changes before or at that state in the revision,
+# Split a revision according to one of its past states (identified by a
+# commit_id).  Keeps the changes before or at that state in the revision,
 # and splits the changes that came after in another rev
 export def restore-at [
   restoration_point: string # The past commit to restore the revision at
   --revision (-r): string@complete-revision-ids = "@" # Which rev to split
   --no-split (-S) # Drop every change that came after restoration_point instead of splitting
 ] {
-  atomic {
+  atomic -n restore-at {
     if not $no_split {
       ^jj new --no-edit -A $revision
     }

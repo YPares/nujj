@@ -17,6 +17,9 @@ export-env {
           modification_date: "committer.timestamp()"
         }
       }
+      caps: {
+        revset: "mutable() & reachable(@, trunk()..)"
+      }
     }
   }
 }
