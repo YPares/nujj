@@ -288,6 +288,7 @@ export def --wrapped main [
     # copy, and the "@" operation will remain frozen the whole time to the
     # value its has when jjiles starts
   --at-op: string # Alias for --at-operation (to match jj CLI args)
+  --height: int # Limit the height of the interface to some number of rows
   ...args # Extra args to pass to 'jj log' (--config for example)
 ]: nothing -> record<change_or_op_id: string, commit_id?: string, file?: string> {
   # Will contain closures that release all the resources acquired so far:
@@ -477,6 +478,7 @@ export def --wrapped main [
         "top" => "reverse"
         "bottom" => "reverse-list"
       })
+      ...(cond ($height != null) --height $height)
       --no-sort --track
       ...(cond (not $jjiles_cfg.interface.show-searchbar) --no-input)
       ...(cond (not $fuzzy) --exact)
