@@ -48,6 +48,16 @@ module complete {
 }
 export use complete
 
+module commandline {
+  export def describe [--revision (-r): string@"complete revision-ids" = "@"] {
+    let msg = ^jj log --no-graph -n1 -T 'description' -r $revision
+    let cmd = $"\(^jj describe\n-r ($revision)\n-m '($msg)')"
+    commandline edit --replace $cmd
+    commandline set-cursor (($cmd | str length) - 2)
+  }
+}
+export use commandline
+
 def to-col-name [] {
   str replace -ra "[()'\":,;|]" "" |
   str replace -ra '[\.\-\+\s]' "_"
@@ -328,3 +338,4 @@ export def advance [
 ] {
   ^jj bookmark move $bookmark --to $"($bookmark)+"
 }
+
