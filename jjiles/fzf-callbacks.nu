@@ -16,7 +16,6 @@ def --wrapped call-jj [--width (-w): int, ...args] {
   ( ^jj ...$args
       --color always
       --config $"width=($width)"
-      --config $"desc-len=($width / 2 | into int)"
       --ignore-working-copy
   )
 }
@@ -39,7 +38,7 @@ def print-oplog [width: int, state: record] {
 
 def print-revlog [width: int, state: record] {
   ( call-jj ...$state.jj_revlog_extra_args
-      -w $width
+      -w ($width * (3.0 / 4) | into int)
       --revisions $state.revset
       --template $state.templates.rev_log
       --at-operation $state.selected_operation_id
@@ -48,7 +47,7 @@ def print-revlog [width: int, state: record] {
 
 def print-evolog [width: int, state: record] {
   ( call-jj evolog #...$state.jj_revlog_extra_args
-      -w $width
+      -w ($width * (3.0 / 4) | into int)
       -r $state.selected_change_id
       --template $state.templates.evo_log
       --at-operation $state.selected_operation_id
