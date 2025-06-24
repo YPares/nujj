@@ -79,6 +79,10 @@ def get-needed-config-from-jj [
 ] {
   let process = {
     let clr = $in
+    let clr = match ($clr | describe) {
+      "string" => $clr
+      _ => $clr.fg
+    }
     match ($clr | parse "bright {color}") {
       [{color: $c}] => $"light_($c)"
       _ => $clr
@@ -94,8 +98,8 @@ def get-needed-config-from-jj [
     }
     colors: {
       operation: ($jj_config.colors."operation id" | do $process)
-      revision: ($jj_config.colors.change_id.fg | do $process)
-      commit: ($jj_config.colors.commit_id.fg | do $process)
+      revision: ($jj_config.colors.change_id | do $process)
+      commit: ($jj_config.colors.commit_id | do $process)
     }
   }
 }
