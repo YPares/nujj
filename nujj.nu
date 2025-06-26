@@ -1,4 +1,5 @@
 use std log
+use nugh.nu ci-statuses
 
 module complete {
   def split-and-cleanup-rev-ids [col_name] {
@@ -345,3 +346,27 @@ export def advance [
   ^jj bookmark move $bookmark --to $"($bookmark)+"
 }
 
+export def mk-ci-revsets [] {
+  let list = ci-statuses |
+    transpose key val |
+    update val {
+      each {$"present\(($in))"} | str join "|"
+    }
+  match $list {
+    [] => {{}}
+    _ => {
+      $list | transpose -rd
+    }
+  }
+}
+
+# Stores in the repo's config information from the github repo
+#
+# Currently, this stores in revsets the commits on which a CI pipeline is running/has finished
+export def sync-gh-info [] {
+  let jj_repo_config_path = ^jj root | collect | path join ".jj" "repo" "config.toml"
+  let jj_repo_config = open $jj_repo_config_path
+  $jj_repo_config | upsert revset-aliases {
+    default {} | reject -i ci-success ci-failure ci-pending | merge (mk-ci-revsets) 
+  } | save -f $jj_repo_config_path
+}
