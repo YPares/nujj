@@ -237,6 +237,9 @@ def get-caps-in-revset [
 export def cap-off [
   --revision (-r): string@"complete revision-ids" = "@"
   --message (-m): string # Change the message of the rebased revision at the same time
+  --move-bookmark (-b)
+    # After rebasing, advance the BOOKMARK to the rebased revision.
+    # Does nothing if BOOKMARK is a remote bookmark
   cap: string@"complete caps"
 ] {
   atomic -n cap-off {
@@ -244,8 +247,11 @@ export def cap-off [
       [] => {
         error make {msg: $"No revision is described by (cap-tag $cap)"}
       }
-      [$cap] => {
-        kick -r $revision -m $message -B $cap.change_id
+      [{change_id: $change_id}] => {
+        kick -r $revision -m $message -B $change_id
+        if $move_bookmark and $cap !~ "@" {
+          ^jj bookmark set $cap -r $"($change_id)-"
+        }
       }
       _ => {
         error make {msg: $"Several revisions are described by (cap-tag $cap)"}
