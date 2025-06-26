@@ -265,7 +265,7 @@ export def rebase-caps [
     # target bookmarks
   --move-bookmarks (-b)
     # After rebasing, advance each BOOKMARK to the revision just below its cap, creating
-    # BOOKMARK if it does not exist yet
+    # BOOKMARK if it does not exist yet. Does nothing if BOOKMARK is a remote bookmark (ie. contains a '@')
 ] {
   let caps = get-caps-in-revset -r $revset
   atomic -n rebase-caps {
@@ -283,7 +283,7 @@ export def rebase-caps [
           ^jj rebase -b $cap.change_id -d $cap.bookmark
         }
       }
-      if $move_bookmarks {
+      if $move_bookmarks and $cap.bookmark !~ "@" {
         log info $"Setting (ansi magenta)($cap.bookmark)(ansi reset) to revision just before ($cap.colored_change_id)"
         ^jj bookmark set $cap.bookmark -r $"($cap.change_id)-"
       }
