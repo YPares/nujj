@@ -1,5 +1,5 @@
 use std log
-use nugh.nu ci-statuses
+use nugh.nu
 
 module complete {
   def split-and-cleanup-rev-ids [col_name] {
@@ -346,8 +346,8 @@ export def advance [
   ^jj bookmark move $bookmark --to $"($bookmark)+"
 }
 
-export def mk-ci-revsets [] {
-  let list = ci-statuses |
+export def mk-gh-revsets [] {
+  let list = nugh group-prs |
     transpose key val |
     update val {
       each {$"present\(($in))"} | str join "|"
@@ -362,11 +362,14 @@ export def mk-ci-revsets [] {
 
 # Stores in the repo's config information from the github repo
 #
-# Currently, this stores in revsets the commits on which a CI pipeline is running/has finished
+# Currently, this stores in revsets the commits on which a CI pipeline is running/has finished, and the commits for which a review is required/done.
 export def sync-gh-info [] {
   let jj_repo_config_path = ^jj root | collect | path join ".jj" "repo" "config.toml"
   let jj_repo_config = open $jj_repo_config_path
-  $jj_repo_config | upsert revset-aliases {
-    default {} | reject -i ci-success ci-failure ci-pending | merge (mk-ci-revsets) 
-  } | save -f $jj_repo_config_path
+  let gh_revsets = mk-gh-revsets
+  $jj_repo_config |
+    upsert revset-aliases {
+      default {} | reject -i ...$NUGH_PR_GROUPS | merge $gh_revsets 
+    } |
+    save -f $jj_repo_config_path
 }

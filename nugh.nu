@@ -20,37 +20,55 @@ export def --wrapped prs [
   --help (-h) # Show this help page
   ...args # Arguments to pass to `gh pr ls`
 ] {
-  ^gh pr ls ...$args --json "number,title,url,headRefName,headRefOid,baseRefName,author,isDraft,statusCheckRollup" |
+  ^gh pr ls ...$args --json "number,title,statusCheckRollup,reviewDecision,author,headRefName,headRefOid,baseRefName,url,isDraft" |
   from json | default [] |
   update author {get login} |
   update statusCheckRollup {
     each {|stat|
       let concl = mklink ($stat.conclusion | defaults $stat.status "(unknown)") $stat.detailsUrl
-      {workflowName: $stat.workflowName, conclusion: $concl}
+      {workflowName: $stat.workflowName, conclusion: $concl, url: $stat.detailsUrl}
     }
   } |
   update title {|pr|
     let draft = if $pr.isDraft {"Draft: "} else {""}
     mklink $"($draft)($pr.title)" $pr.url
   } |
-  reject isDraft url |
   rename -c {number: index, headRefName: sourceBranch, headRefOid: sourceCommit, baseRefName: targetBranch, statusCheckRollup: status} |
-  move --first title status author sourceBranch targetBranch
+  move --first index title author sourceBranch targetBranch
 }
 
-export def ci-statuses [] {
-  let list = prs | select sourceCommit status | insert group {
-    let stats = $in.status | get conclusion | ansi strip | uniq
-    if ($stats | any {$in == "FAILURE"}) {"ci-failure"
-    } else if ($stats | all {$in == "SUCCESS"}) {"ci-success"
-    } else {"ci-pending"}
-  }
-  match $list {
+export const NUGH_PR_GROUPS = [
+  ci_pending ci_success ci_failure
+  review_pending review_success review_failure
+]
+
+# Group the top commit ids of each prs depending on ci status, review status, etc.
+export def group-prs [] {
+  let pr_list = prs |
+    select sourceCommit status reviewDecision |
+    insert group {|pr|
+      [
+        ...(match ($pr.status | get conclusion | ansi strip | uniq) {
+          [] => []
+          $s if ("FAILURE" in $s) => ["ci_failure"]
+          ["SUCCESS"] => ["ci_success"]
+          _ => ["ci_pending"]
+        })
+        ...(match $pr.reviewDecision {
+          "CHANGES_REQUESTED" => ["review_failure"]
+          "APPROVED" => ["review_success"]
+          "REVIEW_REQUIRED" => ["review_pending"]
+          _ => []
+        })
+      ]
+    } |
+    flatten group
+  match $pr_list {
     [] => {
       {}
     }
     _ => {
-      $list | group-by group --to-table | update items {get sourceCommit} | transpose -rd
+      $pr_list | group-by group --to-table | update items {get sourceCommit} | transpose -rd
     }
   }
 }
