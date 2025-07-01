@@ -346,10 +346,11 @@ export def advance [
   ^jj bookmark move $bookmark --to $"($bookmark)+"
 }
 
-export def mk-gh-revsets [] {
-  let list = nugh group-prs |
-    transpose key val |
-    update val {
+export def mk-gh-revsets [--num-runs = 20] {
+  let list = nugh group-run-commits-by-result -L $num_runs |
+    merge (nugh group-pr-commits-by-review) |
+    transpose group commit_ids |
+    update commit_ids {
       each {$"present\(($in))"} | str join "|"
     }
   match $list {
@@ -362,14 +363,15 @@ export def mk-gh-revsets [] {
 
 # Stores in the repo's config information from the github repo
 #
-# Currently, this stores in revsets the commits on which a CI pipeline is running/has finished, and the commits for which a review is required/done.
-export def sync-gh-info [] {
+# Currently, this stores into revsets info related to CI runs and PR reviews
+export def sync-gh-info [
+  --num-runs = 20 # We will fetch data about the Nth latest runs (--num-runs <N>)
+] {
   let jj_repo_config_path = ^jj root | collect | path join ".jj" "repo" "config.toml"
-  let jj_repo_config = open $jj_repo_config_path
-  let gh_revsets = mk-gh-revsets
-  $jj_repo_config |
+  let gh_revsets = mk-gh-revsets --num-runs $num_runs
+  open $jj_repo_config_path |
     upsert revset-aliases {
-      default {} | reject -i ...$NUGH_PR_GROUPS | merge $gh_revsets 
+      default {} | reject -i ...$NUGH_GROUPS | merge $gh_revsets 
     } |
     save -f $jj_repo_config_path
 }

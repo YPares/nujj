@@ -37,23 +37,17 @@ export def --wrapped prs [
   move --first index title author sourceBranch targetBranch
 }
 
-export const NUGH_PR_GROUPS = [
+export const NUGH_GROUPS = [
   ci_pending ci_success ci_failure
   review_pending review_success review_failure
 ]
 
-# Group the top commit ids of each prs depending on ci status, review status, etc.
-export def group-prs [] {
+# Group the top commit ids of each prs depending on review status
+export def group-pr-commits-by-review [] {
   let pr_list = prs |
     select sourceCommit status reviewDecision |
     insert group {|pr|
       [
-        ...(match ($pr.status | get conclusion | ansi strip | uniq) {
-          [] => []
-          $s if ("FAILURE" in $s) => ["ci_failure"]
-          ["SUCCESS"] => ["ci_success"]
-          _ => ["ci_pending"]
-        })
         ...(match $pr.reviewDecision {
           "CHANGES_REQUESTED" => ["review_failure"]
           "APPROVED" => ["review_success"]
@@ -68,7 +62,35 @@ export def group-prs [] {
       {}
     }
     _ => {
-      $pr_list | group-by group --to-table | update items {get sourceCommit} | transpose -rd
+      $pr_list |
+        group-by group --to-table |
+        update items {get sourceCommit} |
+        transpose -rd
+    }
+  }
+}
+
+export def runs [--limit (-L) = 20] {
+  ^gh run list --json "headSha,status,conclusion" -L $limit | from json | default []
+}
+
+export def group-run-commits-by-result [--limit (-L) = 20] {
+  let run_list = runs -L $limit | insert group {|run|
+    match $run.conclusion {
+      "success" => "ci_success"
+      "failure" => "ci_failure"
+      _ => "ci_pending"
+    }
+  }
+  match $run_list {
+    [] => {
+      {}
+    }
+    _ => {
+      $run_list |
+        group-by group --to-table |
+        update items {get headSha} |
+        transpose -rd
     }
   }
 }
