@@ -4,7 +4,7 @@ use nugh.nu
 module complete {
   def split-and-cleanup-rev-ids [col_name] {
     update $col_name {
-      str trim | split row " " | filter {is-not-empty} |
+      str trim | split row " " | where {is-not-empty} |
       str trim --right --char "*"
     } |
       flatten $col_name
@@ -371,7 +371,7 @@ export def sync-gh-info [
   let gh_revsets = mk-gh-revsets --num-runs $num_runs
   open $jj_repo_config_path |
     upsert revset-aliases {
-      default {} | reject -i ...$NUGH_GROUPS | merge $gh_revsets 
+      default {} | reject -i ...$nugh.GROUPS | merge $gh_revsets 
     } |
     save -f $jj_repo_config_path
 }

@@ -37,7 +37,7 @@ export def --wrapped prs [
   move --first index title author sourceBranch targetBranch
 }
 
-export const NUGH_GROUPS = [
+export const GROUPS = [
   ci_pending ci_success ci_failure
   review_pending review_success review_failure
 ]
