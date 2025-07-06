@@ -1,3 +1,5 @@
+THIS REPOSITORY IS ARCHIVED. `nujj` & `jjiles` have been moved to [`monurepo`](https://github.com/YPares/monurepo).
+
 # nujj
 
 A set of nushell utility functions wrapping the [`jj`](https://github.com/jj-vcs/jj) and [`gh`](https://github.com/cli/cli) CLI tools.
